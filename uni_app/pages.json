@@ -1,0 +1,135 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "首页",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/performances/performances",
+			"style": {
+				"navigationBarTitleText": "购票",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/community/community",
+			"style": {
+				"navigationBarTitleText": "社群",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/profile/profile",
+			"style": {
+				"navigationBarTitleText": "我的",
+				"navigationBarBackgroundColor": "#FFFFFF",
+				"navigationBarTextStyle": "black"
+			}
+		},
+		{
+			"path": "pages/search/search",
+			"style": { "navigationBarTitleText": "搜索" }
+		},
+		{
+			"path": "pages/knowledge-graph/knowledge-graph",
+			"style": { "navigationBarTitleText": "知识图谱" }
+		},
+		{
+			"path": "pages/ticket-exchange/ticket-exchange",
+			"style": { "navigationBarTitleText": "盘票" }
+		},
+		{
+			"path": "pages/ai-generation/ai-generation",
+			"style": { "navigationBarTitleText": "AI生成" }
+		},
+		{
+			"path": "pages/performance-detail/performance-detail",
+			"style": { "navigationBarTitleText": "演出详情" }
+		},
+		{
+			"path": "pages/play-detail/play-detail",
+			"style": { "navigationBarTitleText": "剧目详情" }
+		},
+		{
+			"path": "pages/actor-knowledge/actor-knowledge",
+			"style": { "navigationBarTitleText": "演员资料" }
+		},
+		{
+			"path": "pages/graph-view/graph-view",
+			"style": { "navigationBarTitleText": "知识图谱可视化", "navigationBarBackgroundColor": "#FFFFFF", "navigationBarTextStyle": "black" }
+		},
+		{
+			"path": "pages/play-knowledge/play-knowledge",
+			"style": { "navigationBarTitleText": "剧目信息" }
+		},
+		{
+			"path": "pages/actor-detail/actor-detail",
+			"style": { "navigationBarTitleText": "演员详情" }
+		},
+		{
+			"path": "pages/terminology/terminology",
+			"style": { "navigationBarTitleText": "行话科普", "navigationBarBackgroundColor": "#FFFFFF", "navigationBarTextStyle": "black" }
+		},
+		{
+			"path": "pages/seat-mode/seat-mode",
+			"style": { "navigationBarTitleText": "选择选座方式" }
+		},
+		{
+			"path": "pages/seat-selection-2d/seat-selection-2d",
+			"style": { "navigationBarTitleText": "2D选座" }
+		},
+		{
+			"path": "pages/seat-selection-3d/seat-selection-3d",
+			"style": { "navigationBarTitleText": "3D选座" }
+		},
+		{
+			"path": "pages/payment/payment",
+			"style": { "navigationBarTitleText": "确认支付" }
+		}
+	],
+	"tabBar": {
+		"color": "#999999",
+		"selectedColor": "#6366f1",
+		"backgroundColor": "#FFFFFF",
+		"borderStyle": "black",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页",
+				"iconPath": "static/tab-home.png",
+				"selectedIconPath": "static/tab-home-active.png"
+			},
+			{
+				"pagePath": "pages/performances/performances",
+				"text": "购票",
+				"iconPath": "static/tab-cart.png",
+				"selectedIconPath": "static/tab-cart-active.png"
+			},
+			{
+				"pagePath": "pages/community/community",
+				"text": "社群",
+				"iconPath": "static/tab-community.png",
+				"selectedIconPath": "static/tab-community-active.png"
+			},
+			{
+				"pagePath": "pages/profile/profile",
+				"text": "我的",
+				"iconPath": "static/tab-profile.png",
+				"selectedIconPath": "static/tab-profile-active.png"
+			}
+		]
+	},
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "剧场平台",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F5F5"
+	},
+	"uniIdRouter": {}
+}
