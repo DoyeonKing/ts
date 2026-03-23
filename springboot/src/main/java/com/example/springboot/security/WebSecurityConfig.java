@@ -33,8 +33,16 @@ public class WebSecurityConfig {
                         .requestMatchers("/api/recommendations/**").permitAll()
                         .requestMatchers("/api/play-rating/**").permitAll()
                         .requestMatchers("/api/comment/**").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // springdoc：swagger-ui.path 为 /swagger-ui.html 时，不能只用 /swagger-ui/**
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/webjars/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 );
         return http.build();

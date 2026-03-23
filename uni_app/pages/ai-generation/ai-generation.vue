@@ -25,6 +25,14 @@
 			<textarea class="textarea" v-model="userInput" placeholder="例如：重点写第三幕的观感、希望风格偏文艺..." maxlength="200" />
 		</view>
 		<view class="btn-generate" @click="generate">生成</view>
+		<view class="section" v-if="resultText">
+			<text class="section-title">生成结果</text>
+			<view class="result-box">
+				<text class="result-text">{{ resultText }}</text>
+				<image v-if="resultImageUrl" class="result-image" :src="resultImageUrl" mode="widthFix" />
+				<text v-if="resultMock" class="result-hint">（当前为后端演示文案，配置大模型密钥后为真实生成）</text>
+			</view>
+		</view>
 		<view class="section">
 			<text class="section-title">生成历史</text>
 			<view class="history-list">
@@ -39,9 +47,14 @@
 </template>
 
 <script>
+import apiConfig from '../../config/index.js'
+
 export default {
 	data() {
 		return {
+			resultText: '',
+			resultImageUrl: '',
+			resultMock: false,
 			selectedType: 'review',
 			userInput: '',
 			selectedPlay: null,
@@ -71,15 +84,58 @@ export default {
 		},
 		generate() {
 			const type = this.types.find(t => t.key === this.selectedType)
-			uni.showToast({ title: '正在生成: ' + (type ? type.name : ''), icon: 'none' })
-			// 模拟加入历史
-			setTimeout(() => {
-				this.historyList.unshift({
-					typeName: type ? type.name : 'AI生成',
-					playName: this.selectedPlay ? this.selectedPlay.name : null,
-					time: new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-				})
-			}, 500)
+			const key = this.selectedType
+			uni.showLoading({ title: '生成中...' })
+			const base = apiConfig.baseURL.replace(/\/$/, '')
+			const isCreative = key === 'poster' || key === 'merch'
+			uni.request({
+				url: isCreative ? `${base}/ai/creative` : `${base}/ai/generate-text`,
+				method: 'POST',
+				header: { 'Content-Type': 'application/json' },
+				data: isCreative
+					? {
+						type: key,
+						playId: this.selectedPlay ? this.selectedPlay.id : undefined,
+						style: this.userInput || undefined
+					}
+					: {
+						type: key,
+						playId: this.selectedPlay ? this.selectedPlay.id : undefined,
+						userInput: this.userInput || undefined
+					},
+				success: (res) => {
+					const body = res.data
+					if (body && String(body.code) === '200' && body.data) {
+						if (isCreative) {
+							this.resultText = body.data.prompt || '已生成文创图片'
+							this.resultImageUrl = body.data.imageUrl || ''
+						} else {
+							this.resultText = body.data.text || ''
+							this.resultImageUrl = ''
+						}
+						this.resultMock = !!body.data.mock
+						this.historyList.unshift({
+							typeName: type ? type.name : 'AI生成',
+							playName: this.selectedPlay ? this.selectedPlay.name : null,
+							time: new Date().toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+						})
+						if (this.resultMock) {
+							uni.showToast({ title: '已返回（演示文案）', icon: 'none' })
+						} else {
+							uni.showToast({ title: '生成完成', icon: 'success' })
+						}
+					} else {
+						const msg = (body && body.msg) || '生成失败'
+						uni.showToast({ title: msg, icon: 'none' })
+					}
+				},
+				fail: () => {
+					uni.showToast({ title: '网络错误，请确认后端已启动', icon: 'none' })
+				},
+				complete: () => {
+					uni.hideLoading()
+				}
+			})
 		},
 		viewHistory(h) {
 			uni.showToast({ title: '查看: ' + h.typeName, icon: 'none' })
@@ -109,4 +165,8 @@ export default {
 .history-type { font-size: 28rpx; font-weight: bold; color: #333; display: block; }
 .history-play { font-size: 26rpx; color: #666; display: block; margin-top: 6rpx; }
 .history-time { font-size: 24rpx; color: #999; display: block; margin-top: 6rpx; }
+.result-box { background: #fff; border-radius: 16rpx; padding: 24rpx; }
+.result-text { font-size: 28rpx; color: #333; line-height: 1.65; white-space: pre-wrap; }
+.result-image { width: 100%; border-radius: 16rpx; margin-top: 20rpx; }
+.result-hint { font-size: 24rpx; color: #999; display: block; margin-top: 16rpx; }
 </style>
