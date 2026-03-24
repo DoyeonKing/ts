@@ -62,10 +62,35 @@ public class AiRecommendService {
         profile.put("targetActor", intent.targetActor);
         profile.put("budget", Map.of("min", intent.budgetMin, "max", intent.budgetMax));
 
+        List<Map<String, Object>> companions = List.of();
+        if (currentUser != null && !items.isEmpty()) {
+            Long topPlayId = items.get(0).getPlayId();
+            companions = buildCompanionCandidates(currentUser, topPlayId, users, plays, 5);
+        }
+
+        Map<String, Object> resp = new LinkedHashMap<>();
+        resp.put("strategy", "hybrid-content-cf-mmr-v1");
+        resp.put("items", items);
+        resp.put("profile", profile);
+        resp.put("companions", companions);
+        resp.put("socialHint", companions.isEmpty() ? "暂无可匹配同行用户" : "可点击社交入口发起一起看剧邀请");
+        return resp;
+    }
+
+    public Map<String, Object> recommendCompanions(Long userId, Long playId, Integer topK) {
+        List<MockPlayProfile> plays = mockDataService.getPlays();
+        List<MockUserPreference> users = mockDataService.getUserPreferences();
+
+        MockUserPreference currentUser = resolveUser(userId, users);
+        if (currentUser == null) {
+            return Map.of("playId", playId, "companions", List.of(), "message", "用户画像不存在");
+        }
+        int k = Math.max(1, Math.min(topK == null ? 5 : topK, 20));
+        List<Map<String, Object>> companions = buildCompanionCandidates(currentUser, playId, users, plays, k);
         return Map.of(
-                "strategy", "hybrid-content-cf-mmr-v1",
-                "items", items,
-                "profile", profile
+                "playId", playId,
+                "userId", userId,
+                "companions", companions
         );
     }
 
@@ -272,6 +297,54 @@ public class AiRecommendService {
         double genre = a.getGenre().equals(b.getGenre()) ? 1.0 : 0.0;
         double tags = jaccard(a.getTags(), b.getTags());
         return 0.6 * genre + 0.4 * tags;
+    }
+
+    private List<Map<String, Object>> buildCompanionCandidates(MockUserPreference currentUser,
+                                                                Long playId,
+                                                                List<MockUserPreference> users,
+                                                                List<MockPlayProfile> plays,
+                                                                int topK) {
+        MockPlayProfile targetPlay = plays.stream().filter(p -> Objects.equals(p.getPlayId(), playId)).findFirst().orElse(null);
+        if (targetPlay == null) return List.of();
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (MockUserPreference other : users) {
+            if (Objects.equals(other.getUserId(), currentUser.getUserId())) continue;
+            double sim = userSimilarity(currentUser, other);
+            double affinity = companionPlayAffinity(other, targetPlay);
+            double finalScore = 0.65 * sim + 0.35 * affinity;
+            if (finalScore < 0.22) continue;
+
+            List<String> reasons = new ArrayList<>();
+            if (sim >= 0.35) reasons.add("兴趣画像相近");
+            if (other.getRecentlyViewedPlayIds().contains(playId)) reasons.add("近期看过该剧相关内容");
+            if (other.getLikedGenres().contains(targetPlay.getGenre())) reasons.add("偏好类型一致");
+            if (other.getLikedTags().stream().anyMatch(targetPlay.getTags()::contains)) reasons.add("风格标签重合");
+            if (reasons.isEmpty()) reasons.add("综合匹配度较高");
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("userId", other.getUserId());
+            item.put("matchScore", round2(finalScore * 100));
+            item.put("budgetRange", other.getBudgetMin() + "-" + other.getBudgetMax());
+            item.put("favoriteActor", other.getFavoriteActor());
+            item.put("reasons", reasons.stream().distinct().limit(3).toList());
+            result.add(item);
+        }
+
+        result.sort((a, b) -> Double.compare((double) b.get("matchScore"), (double) a.get("matchScore")));
+        if (result.size() > topK) {
+            return result.subList(0, topK);
+        }
+        return result;
+    }
+
+    private double companionPlayAffinity(MockUserPreference user, MockPlayProfile play) {
+        double recent = user.getRecentlyViewedPlayIds().contains(play.getPlayId()) ? 1.0 : 0.0;
+        double genre = user.getLikedGenres().contains(play.getGenre()) ? 1.0 : 0.0;
+        long hitTagCount = user.getLikedTags().stream().filter(play.getTags()::contains).count();
+        double tags = play.getTags().isEmpty() ? 0 : (double) hitTagCount / play.getTags().size();
+        double actor = StringUtils.hasText(user.getFavoriteActor()) && user.getFavoriteActor().equals(play.getLeadActor()) ? 1.0 : 0.0;
+        return 0.45 * recent + 0.25 * genre + 0.20 * tags + 0.10 * actor;
     }
 
     private double jaccard(List<String> a, List<String> b) {

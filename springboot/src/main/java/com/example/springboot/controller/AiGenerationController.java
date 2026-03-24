@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 @RestController
 @RequestMapping("/api/ai")
@@ -76,5 +77,16 @@ public class AiGenerationController {
     public Result recommend(@RequestBody(required = false) RecommendRequest request) {
         RecommendRequest req = request == null ? new RecommendRequest() : request;
         return Result.success(aiRecommendService.recommend(req));
+    }
+
+    /**
+     * 社交候选：可能与你一起看该剧的用户（基于兴趣画像与该剧偏好匹配）
+     */
+    @GetMapping("/recommend/companions")
+    @Operation(summary = "推荐同行用户", description = "参数：userId、playId、topK；用于社交入口点击后展示候选同行")
+    public Result companions(@RequestParam Long userId,
+                             @RequestParam Long playId,
+                             @RequestParam(required = false) Integer topK) {
+        return Result.success(aiRecommendService.recommendCompanions(userId, playId, topK));
     }
 }
