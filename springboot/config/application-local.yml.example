@@ -5,5 +5,11 @@ app:
     llm:
       enabled: true
       api-key: 在此粘贴你的_DashScope_API_Key
+      # 文本生成（review/plot/actor）配置
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       model: qwen-turbo
+      # 图像生成（poster/merch）配置；image-api-key 不填则默认复用 api-key
+      image-base-url: https://dashscope.aliyuncs.com/api/v1
+      image-model: wan2.6-t2i
+      # 参考图生成（creative-from-image）建议使用图像编辑模型（避免 t2i 不支持 image 输入）
+      image-edit-model: wanx2.1-imageedit

@@ -34,4 +34,27 @@ public class AiLlmProperties {
      * 请求超时（秒）。
      */
     private int timeoutSeconds = 120;
+
+    /**
+     * 图像生成专用 API Key；为空时回退使用 apiKey。
+     */
+    private String imageApiKey = "";
+
+    /**
+     * 图像生成专用基础地址；为空时回退使用 baseUrl。
+     * 示例：https://dashscope.aliyuncs.com/api/v1
+     */
+    private String imageBaseUrl = "";
+
+    /**
+     * 图像生成专用模型；为空时回退使用 model。
+     * 示例：wan2.6-t2i
+     */
+    private String imageModel = "";
+
+    /**
+     * 参考图生成专用模型（图生图/编辑）；为空时回退使用 imageModel。
+     * 示例：wanx2.1-imageedit
+     */
+    private String imageEditModel = "";
 }

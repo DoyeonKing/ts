@@ -1,6 +1,7 @@
 package com.example.springboot.controller;
 
 import com.example.springboot.common.Result;
+import com.example.springboot.dto.GenerateCreativeFromImageRequest;
 import com.example.springboot.dto.GenerateCreativeRequest;
 import com.example.springboot.dto.GenerateCreativeResponse;
 import com.example.springboot.dto.GenerateTextRequest;
@@ -43,6 +44,17 @@ public class AiGenerationController {
     @Operation(summary = "生成文创图片", description = "type=poster 海报，merch 周边；返回 imageUrl + prompt + mock 信息")
     public Result creative(@Valid @RequestBody GenerateCreativeRequest request) {
         GenerateCreativeResponse data = aiGenerationService.generateCreative(request);
+        return Result.success(data);
+    }
+
+    /**
+     * 基于参考图生成文创图：海报/周边设计。
+     * body: { "type": "poster"|"merch", "imageUrl": 必填, "playId": 可选, "style": 可选, "productType": 可选 }
+     */
+    @PostMapping("/creative-from-image")
+    @Operation(summary = "参考图生成文创图片", description = "上传图转公网URL后调用；返回 imageUrl + prompt + mock 信息")
+    public Result creativeFromImage(@Valid @RequestBody GenerateCreativeFromImageRequest request) {
+        GenerateCreativeResponse data = aiGenerationService.generateCreativeFromImage(request);
         return Result.success(data);
     }
 

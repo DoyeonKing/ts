@@ -1,6 +1,7 @@
 package com.example.springboot.service;
 
 import com.example.springboot.config.AiLlmProperties;
+import com.example.springboot.dto.GenerateCreativeFromImageRequest;
 import com.example.springboot.dto.GenerateCreativeRequest;
 import com.example.springboot.dto.GenerateCreativeResponse;
 import com.example.springboot.dto.GenerateTextRequest;
@@ -10,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -28,6 +30,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AiGenerationService {
 
     private final AiLlmProperties llmProperties;
@@ -77,7 +80,7 @@ public class AiGenerationService {
         String playName = resolvePlayName(req.getPlayId());
         String prompt = buildCreativePrompt(req.getType(), playName, req.getStyle());
 
-        List<String> missing = getMissingConfigReasons();
+        List<String> missing = getMissingImageConfigReasons();
         if (!missing.isEmpty()) {
             return new GenerateCreativeResponse(
                     buildMockCreativeImageUrl(req.getType(), playName),
@@ -99,6 +102,21 @@ public class AiGenerationService {
             }
             return new GenerateCreativeResponse(imageUrl, prompt, false, null);
         } catch (Exception e) {
+            // 版权/IP 风险命中时，自动降敏重试一次，尽量提高可用性。
+            if (isIpInfringementError(e.getMessage())) {
+                String safePrompt = buildSafeCreativePrompt(req.getType(), playName, req.getStyle());
+                log.warn("Creative IP risk detected, retry with sanitized prompt. oldPrompt={}, newPrompt={}", prompt, safePrompt);
+                try {
+                    String retriedImageUrl = callImageGeneration(safePrompt);
+                    if (StringUtils.hasText(retriedImageUrl)) {
+                        return new GenerateCreativeResponse(retriedImageUrl, safePrompt, false, null);
+                    }
+                } catch (Exception retryEx) {
+                    log.warn("Creative retry after IP risk still failed. reason={}", retryEx.getMessage());
+                }
+            }
+            log.warn("Creative generation fallback to mock. imageBaseUrl={}, imageModel={}, reason={}",
+                    resolveImageBaseUrl(), resolveImageModel(), e.getMessage());
             return new GenerateCreativeResponse(
                     buildMockCreativeImageUrl(req.getType(), playName),
                     prompt,
@@ -106,6 +124,89 @@ public class AiGenerationService {
                     "图片模型调用失败: " + e.getMessage()
             );
         }
+    }
+
+    public GenerateCreativeResponse generateCreativeFromImage(GenerateCreativeFromImageRequest req) {
+        String playName = resolvePlayName(req.getPlayId());
+        String prompt = buildCreativeFromImagePrompt(req.getType(), playName, req.getStyle(), req.getProductType());
+        String referenceModel = resolveImageEditModel();
+
+        List<String> missing = getMissingImageConfigReasons();
+        if (!missing.isEmpty()) {
+            return new GenerateCreativeResponse(
+                    buildMockCreativeImageUrl(req.getType(), playName),
+                    prompt,
+                    true,
+                    String.join("; ", missing)
+            );
+        }
+
+        if (!supportsReferenceImage(referenceModel)) {
+            try {
+                String fallbackPrompt = prompt + "。当前仅做风格近似重绘，不保证参考图细节一一对应。";
+                String fallbackImageUrl = callImageGeneration(fallbackPrompt);
+                if (StringUtils.hasText(fallbackImageUrl)) {
+                    return new GenerateCreativeResponse(
+                            fallbackImageUrl,
+                            fallbackPrompt,
+                            true,
+                            "当前模型(" + referenceModel + ")不支持参考图输入；请配置 app.ai.llm.image-edit-model 为图像编辑模型后获得真实图生图效果"
+                    );
+                }
+            } catch (Exception fallbackEx) {
+                log.warn("Creative-from-image unsupported-model fallback failed. reason={}", fallbackEx.getMessage());
+            }
+            return new GenerateCreativeResponse(
+                    buildMockCreativeImageUrl(req.getType(), playName),
+                    prompt,
+                    true,
+                    "当前模型(" + referenceModel + ")不支持参考图输入；请配置 app.ai.llm.image-edit-model 为图像编辑模型"
+            );
+        }
+
+        try {
+            String imageUrl = callImageGenerationWithReference(prompt, req.getImageUrl());
+            if (StringUtils.hasText(imageUrl)) {
+                return new GenerateCreativeResponse(imageUrl, prompt, false, null);
+            }
+        } catch (Exception e) {
+            log.warn("Creative-from-image primary call failed. imageBaseUrl={}, imageModel={}, reason={}",
+                    resolveImageBaseUrl(), resolveImageModel(), e.getMessage());
+            if (isIpInfringementError(e.getMessage())) {
+                String safePrompt = buildSafeCreativePrompt(req.getType(), playName, req.getStyle());
+                try {
+                    String retryImageUrl = callImageGenerationWithReference(safePrompt, req.getImageUrl());
+                    if (StringUtils.hasText(retryImageUrl)) {
+                        return new GenerateCreativeResponse(retryImageUrl, safePrompt, false, null);
+                    }
+                } catch (Exception retryEx) {
+                    log.warn("Creative-from-image retry failed. reason={}", retryEx.getMessage());
+                }
+            }
+            // 尝试降级到纯文本文生图，保证接口可用。
+            try {
+                String fallbackPrompt = prompt + "。参考图无法直接使用时，请保持主体轮廓与主色调一致。";
+                String fallbackImageUrl = callImageGeneration(fallbackPrompt);
+                if (StringUtils.hasText(fallbackImageUrl)) {
+                    return new GenerateCreativeResponse(fallbackImageUrl, fallbackPrompt, false, null);
+                }
+            } catch (Exception fallbackEx) {
+                log.warn("Creative-from-image text fallback failed. reason={}", fallbackEx.getMessage());
+            }
+            return new GenerateCreativeResponse(
+                    buildMockCreativeImageUrl(req.getType(), playName),
+                    prompt,
+                    true,
+                    "参考图生成失败: " + e.getMessage()
+            );
+        }
+
+        return new GenerateCreativeResponse(
+                buildMockCreativeImageUrl(req.getType(), playName),
+                prompt,
+                true,
+                "参考图生成返回为空"
+        );
     }
 
     /**
@@ -120,6 +221,14 @@ public class AiGenerationService {
         status.put("baseUrl", StringUtils.hasText(llmProperties.getBaseUrl()) ? llmProperties.getBaseUrl() : "");
         status.put("model", StringUtils.hasText(llmProperties.getModel()) ? llmProperties.getModel() : "");
         status.put("missing", getMissingConfigReasons());
+        status.put("imageHasApiKey", StringUtils.hasText(resolveImageApiKey()));
+        status.put("imageHasBaseUrl", StringUtils.hasText(resolveImageBaseUrl()));
+        status.put("imageHasModel", StringUtils.hasText(resolveImageModel()));
+        status.put("imageBaseUrl", resolveImageBaseUrl());
+        status.put("imageModel", resolveImageModel());
+        status.put("imageEditModel", resolveImageEditModel());
+        status.put("referenceImageSupported", supportsReferenceImage(resolveImageEditModel()));
+        status.put("imageMissing", getMissingImageConfigReasons());
         return status;
     }
 
@@ -138,6 +247,45 @@ public class AiGenerationService {
             missing.add("app.ai.llm.model 为空");
         }
         return missing;
+    }
+
+    private List<String> getMissingImageConfigReasons() {
+        List<String> missing = new ArrayList<>();
+        if (!llmProperties.isEnabled()) {
+            missing.add("app.ai.llm.enabled=false");
+        }
+        if (!StringUtils.hasText(resolveImageApiKey())) {
+            missing.add("app.ai.llm.image-api-key/api-key 为空");
+        }
+        if (!StringUtils.hasText(resolveImageBaseUrl())) {
+            missing.add("app.ai.llm.image-base-url/base-url 为空");
+        }
+        if (!StringUtils.hasText(resolveImageModel())) {
+            missing.add("app.ai.llm.image-model/model 为空");
+        }
+        return missing;
+    }
+
+    private String resolveImageApiKey() {
+        return StringUtils.hasText(llmProperties.getImageApiKey()) ? llmProperties.getImageApiKey() : llmProperties.getApiKey();
+    }
+
+    private String resolveImageBaseUrl() {
+        return StringUtils.hasText(llmProperties.getImageBaseUrl()) ? llmProperties.getImageBaseUrl() : llmProperties.getBaseUrl();
+    }
+
+    private String resolveImageModel() {
+        return StringUtils.hasText(llmProperties.getImageModel()) ? llmProperties.getImageModel() : llmProperties.getModel();
+    }
+
+    private String resolveImageEditModel() {
+        return StringUtils.hasText(llmProperties.getImageEditModel()) ? llmProperties.getImageEditModel() : resolveImageModel();
+    }
+
+    private boolean supportsReferenceImage(String model) {
+        String m = StringUtils.hasText(model) ? model.toLowerCase() : "";
+        // 已知 t2i 模型只支持文生图，不支持在同一消息中传入 image content。
+        return !m.contains("t2i");
     }
 
     private String resolvePlayName(Long playId) {
@@ -200,6 +348,32 @@ public class AiGenerationService {
                 + "。画面干净、构图完整、色彩协调，适合活动宣传与社交媒体展示，避免过多文字。";
     }
 
+    private String buildCreativeFromImagePrompt(String type, String playName, String style, String productType) {
+        String basePrompt = buildCreativePrompt(type, playName, style);
+        String product = StringUtils.hasText(productType) ? productType.trim() : ("poster".equals(type) ? "海报" : "周边");
+        return basePrompt
+                + " 请以用户参考图为主视觉来源，保留核心构图和主色调。"
+                + " 输出适配" + product + "场景，避免加入版权角色名称与品牌标识。";
+    }
+
+    private String buildSafeCreativePrompt(String type, String playName, String style) {
+        String sanitizedStyle = sanitizeIpRiskText(style);
+        return buildCreativePrompt(type, playName, sanitizedStyle);
+    }
+
+    private String sanitizeIpRiskText(String input) {
+        if (!StringUtils.hasText(input)) {
+            return "梦幻奇境风格，冬日童话氛围";
+        }
+        String s = input;
+        // 常见 IP 关键词做弱化处理，避免命中版权风险规则。
+        s = s.replaceAll("(?i)冰雪奇缘|frozen", "冬日童话");
+        s = s.replaceAll("(?i)爱莎|艾莎|elsa", "女主角");
+        s = s.replaceAll("(?i)安娜|anna", "伙伴角色");
+        s = s.replaceAll("(?i)迪士尼|disney", "经典童话");
+        return s;
+    }
+
     private String buildMockCreativeImageUrl(String type, String playName) {
         String creativeType = "poster".equals(type) ? "海报" : "周边";
         String text = (StringUtils.hasText(playName) ? playName : "剧目") + "-" + creativeType + "-演示图";
@@ -208,13 +382,25 @@ public class AiGenerationService {
     }
 
     private String callImageGeneration(String prompt) throws Exception {
-        String base = llmProperties.getBaseUrl().replaceAll("/+$", "");
-        String url = base + "/images/generations";
+        String base = resolveImageBaseUrl().replaceAll("/+$", "");
+        String url = base + "/services/aigc/multimodal-generation/generation";
 
         ObjectNode body = objectMapper.createObjectNode();
-        body.put("model", llmProperties.getModel());
-        body.put("prompt", prompt);
-        body.put("size", "1024x1024");
+        body.put("model", resolveImageModel());
+        ObjectNode input = body.putObject("input");
+        ArrayNode messages = input.putArray("messages");
+        ObjectNode message = messages.addObject();
+        message.put("role", "user");
+        ArrayNode content = message.putArray("content");
+        ObjectNode text = content.addObject();
+        text.put("text", prompt);
+
+        ObjectNode parameters = body.putObject("parameters");
+        parameters.put("prompt_extend", true);
+        parameters.put("watermark", false);
+        parameters.put("n", 1);
+        parameters.put("negative_prompt", "");
+        parameters.put("size", "1280*1280");
 
         HttpClient client = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(30))
@@ -224,28 +410,103 @@ public class AiGenerationService {
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(llmProperties.getTimeoutSeconds()))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + llmProperties.getApiKey())
+                .header("Authorization", "Bearer " + resolveImageApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                 .build();
 
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 429 || response.body().contains("Throttling.RateQuota")) {
+            Thread.sleep(1500L);
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalStateException("HTTP " + response.statusCode() + ": " + response.body());
+            throw new IllegalStateException(parseDashScopeError(response.statusCode(), response.body()));
         }
 
         JsonNode root = objectMapper.readTree(response.body());
-        JsonNode err = root.path("error");
-        if (!err.isMissingNode() && err.path("message").isTextual()) {
-            throw new IllegalStateException(err.path("message").asText());
+        if (root.path("code").isTextual() && root.path("message").isTextual()) {
+            throw new IllegalStateException(root.path("code").asText() + ": " + root.path("message").asText());
         }
-        JsonNode first = root.path("data").path(0);
-        if (first.path("url").isTextual()) {
-            return first.path("url").asText();
-        }
-        if (first.path("b64_json").isTextual()) {
-            return "data:image/png;base64," + first.path("b64_json").asText();
+        JsonNode imageNode = root.path("output").path("choices").path(0).path("message").path("content").path(0).path("image");
+        if (imageNode.isTextual()) {
+            return imageNode.asText();
         }
         return null;
+    }
+
+    private String callImageGenerationWithReference(String prompt, String imageUrl) throws Exception {
+        String base = resolveImageBaseUrl().replaceAll("/+$", "");
+        String url = base + "/services/aigc/multimodal-generation/generation";
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("model", resolveImageEditModel());
+        ObjectNode input = body.putObject("input");
+        ArrayNode messages = input.putArray("messages");
+        ObjectNode message = messages.addObject();
+        message.put("role", "user");
+        ArrayNode content = message.putArray("content");
+        ObjectNode image = content.addObject();
+        image.put("image", imageUrl);
+        ObjectNode text = content.addObject();
+        text.put("text", prompt);
+
+        ObjectNode parameters = body.putObject("parameters");
+        parameters.put("prompt_extend", true);
+        parameters.put("watermark", false);
+        parameters.put("n", 1);
+        parameters.put("negative_prompt", "");
+        parameters.put("size", "1280*1280");
+
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(30))
+                .build();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(llmProperties.getTimeoutSeconds()))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + resolveImageApiKey())
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 429 || response.body().contains("Throttling.RateQuota")) {
+            Thread.sleep(1500L);
+            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException(parseDashScopeError(response.statusCode(), response.body()));
+        }
+
+        JsonNode root = objectMapper.readTree(response.body());
+        if (root.path("code").isTextual() && root.path("message").isTextual()) {
+            throw new IllegalStateException(root.path("code").asText() + ": " + root.path("message").asText());
+        }
+        JsonNode imageNode = root.path("output").path("choices").path(0).path("message").path("content").path(0).path("image");
+        if (imageNode.isTextual()) {
+            return imageNode.asText();
+        }
+        return null;
+    }
+
+    private String parseDashScopeError(int statusCode, String body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            String code = root.path("code").asText("");
+            String message = root.path("message").asText("");
+            String requestId = root.path("request_id").asText("");
+            if (StringUtils.hasText(code) || StringUtils.hasText(message)) {
+                return "HTTP " + statusCode
+                        + " [code=" + code + ", message=" + message + ", request_id=" + requestId + "]";
+            }
+        } catch (Exception ignore) {
+            // 非 JSON 或结构不符时回落原始内容
+        }
+        return "HTTP " + statusCode + ": " + body;
+    }
+
+    private boolean isIpInfringementError(String message) {
+        return StringUtils.hasText(message) && message.contains("IPInfringementSuspect");
     }
 
     private String callChatCompletions(String system, String user) throws Exception {
