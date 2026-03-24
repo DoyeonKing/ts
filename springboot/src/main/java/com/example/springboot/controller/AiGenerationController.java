@@ -4,9 +4,11 @@ import com.example.springboot.common.Result;
 import com.example.springboot.dto.GenerateCreativeFromImageRequest;
 import com.example.springboot.dto.GenerateCreativeRequest;
 import com.example.springboot.dto.GenerateCreativeResponse;
+import com.example.springboot.dto.RecommendRequest;
 import com.example.springboot.dto.GenerateTextRequest;
 import com.example.springboot.dto.GenerateTextResponse;
 import com.example.springboot.service.AiGenerationService;
+import com.example.springboot.service.AiRecommendService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiGenerationController {
 
     private final AiGenerationService aiGenerationService;
+    private final AiRecommendService aiRecommendService;
 
     /**
      * 文字类 AI 生成：观后感、剧情分析、演员评价。
@@ -62,5 +65,16 @@ public class AiGenerationController {
     @Operation(summary = "AI 配置诊断", description = "仅返回是否已读到 api-key/base-url/model，不返回密钥原文")
     public Result configStatus() {
         return Result.success(aiGenerationService.getConfigStatus());
+    }
+
+    /**
+     * Day4: 推荐算法 MVP（基于 Day3 mock 数据）
+     * body: { "query": 可选, "userId": 可选, "topK": 可选(1~10) }
+     */
+    @PostMapping("/recommend")
+    @Operation(summary = "推荐结果", description = "混合推荐：内容匹配 + 协同信号 + 热度质量 + 预算匹配 + 多样性重排")
+    public Result recommend(@RequestBody(required = false) RecommendRequest request) {
+        RecommendRequest req = request == null ? new RecommendRequest() : request;
+        return Result.success(aiRecommendService.recommend(req));
     }
 }

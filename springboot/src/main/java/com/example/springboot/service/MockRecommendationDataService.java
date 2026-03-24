@@ -16,6 +16,10 @@ import java.util.stream.Collectors;
 @Service
 public class MockRecommendationDataService {
 
+    private static final int TARGET_PLAY_COUNT = 220;
+    private static final int TARGET_USER_PREF_COUNT = 1200;
+    private static final long DATA_SEED = 20260323L;
+
     private final List<MockPlayProfile> plays = new ArrayList<>();
     private final List<MockUserPreference> userPreferences = new ArrayList<>();
 
@@ -75,18 +79,18 @@ public class MockRecommendationDataService {
         plays.add(new MockPlayProfile(18L, "《魔法学院》", "原创话剧", List.of("奇幻", "青春", "魔法"), "江屿", 8.4, 74, 130, 560));
         plays.add(new MockPlayProfile(19L, "《时空旅人》", "原创音乐剧", List.of("科幻", "冒险", "情感"), "周栩", 8.6, 79, 180, 760));
         plays.add(new MockPlayProfile(20L, "《长安十二时辰》", "沉浸式戏剧", List.of("沉浸式", "历史", "互动"), "秦观澜", 9.1, 95, 260, 1280));
+
+        // 基于固定种子扩容，保证本地/队友机器上结果一致，便于联调。
+        expandPlayProfiles(TARGET_PLAY_COUNT, new Random(DATA_SEED));
     }
 
     private void initUserPreferences() {
-        String[] genrePool = {"戏剧", "话剧", "音乐剧", "舞剧", "歌剧", "沉浸式戏剧", "京剧", "昆曲"};
-        String[] tagPool = {"经典", "爱情", "奇幻", "悲剧", "国风", "视觉", "互动", "悬疑", "励志", "青春"};
-        String[] actorPool = {
-                "张文远", "林雪宁", "王语安", "陈子昂", "周以诚", "许清妍", "沈知夏", "顾承泽", "韩若彤", "陆景曜",
-                "谢书言", "贺明川", "唐沐晴", "苏以沫", "方启明", "邵霖", "叶清歌", "江屿", "周栩", "秦观澜"
-        };
+        String[] genrePool = plays.stream().map(MockPlayProfile::getGenre).distinct().toArray(String[]::new);
+        String[] tagPool = plays.stream().flatMap(p -> p.getTags().stream()).distinct().toArray(String[]::new);
+        String[] actorPool = plays.stream().map(MockPlayProfile::getLeadActor).distinct().toArray(String[]::new);
 
-        Random random = new Random(20260323L);
-        for (long i = 1; i <= 50; i++) {
+        Random random = new Random(DATA_SEED + 99);
+        for (long i = 1; i <= TARGET_USER_PREF_COUNT; i++) {
             List<String> likedGenres = pickDistinct(genrePool, 2 + random.nextInt(2), random);
             List<String> likedTags = pickDistinct(tagPool, 3, random);
             String favoriteActor = actorPool[random.nextInt(actorPool.length)];
@@ -116,5 +120,44 @@ public class MockRecommendationDataService {
         List<Long> ids = plays.stream().map(MockPlayProfile::getPlayId).collect(Collectors.toCollection(ArrayList::new));
         Collections.shuffle(ids, random);
         return ids.subList(0, Math.min(n, ids.size()));
+    }
+
+    private void expandPlayProfiles(int targetCount, Random random) {
+        if (plays.size() >= targetCount) return;
+
+        String[] genrePool = {"戏剧", "话剧", "音乐剧", "舞剧", "歌剧", "沉浸式戏剧", "京剧", "昆曲", "儿童剧", "实验戏剧"};
+        String[] tagPool = {
+                "经典", "爱情", "奇幻", "悲剧", "国风", "视觉", "互动", "悬疑", "励志", "青春",
+                "治愈", "科幻", "历史", "家庭", "现实主义", "诗意", "冒险", "热血", "成长", "轻喜剧"
+        };
+        String[] namePrefix = {"星河", "月影", "长夜", "黎明", "风暴", "微光", "镜花", "海岸", "焰火", "旅途"};
+        String[] nameSuffix = {"计划", "物语", "之门", "纪事", "回声", "来信", "密语", "终章", "未眠夜", "记忆体"};
+
+        long nextId = plays.stream().mapToLong(MockPlayProfile::getPlayId).max().orElse(0L) + 1;
+        int actorCounter = 1;
+        while (plays.size() < targetCount) {
+            String genre = genrePool[random.nextInt(genrePool.length)];
+            List<String> tags = pickDistinct(tagPool, 3, random);
+            String playName = "《" + namePrefix[random.nextInt(namePrefix.length)] + nameSuffix[random.nextInt(nameSuffix.length)] + "·" + nextId + "》";
+            String actor = "演员" + String.format("%03d", actorCounter++);
+
+            double rating = 7.8 + random.nextDouble() * 1.8; // 7.8-9.6
+            rating = Math.round(rating * 10.0) / 10.0;
+            int heat = 65 + random.nextInt(36); // 65-100
+            int priceMin = 80 + random.nextInt(280);
+            int priceMax = priceMin + 260 + random.nextInt(980);
+
+            plays.add(new MockPlayProfile(
+                    nextId++,
+                    playName,
+                    genre,
+                    tags,
+                    actor,
+                    rating,
+                    heat,
+                    priceMin,
+                    priceMax
+            ));
+        }
     }
 }
