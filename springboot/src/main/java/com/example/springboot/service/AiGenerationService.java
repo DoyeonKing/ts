@@ -402,13 +402,14 @@ public class AiGenerationService {
         parameters.put("negative_prompt", "");
         parameters.put("size", "1280*1280");
 
+        int connectSecImg = Math.max(15, llmProperties.getConnectTimeoutSeconds());
         HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .connectTimeout(Duration.ofSeconds(connectSecImg))
                 .build();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(llmProperties.getTimeoutSeconds()))
+                .timeout(Duration.ofSeconds(Math.max(connectSecImg, llmProperties.getTimeoutSeconds())))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + resolveImageApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
@@ -457,13 +458,14 @@ public class AiGenerationService {
         parameters.put("negative_prompt", "");
         parameters.put("size", "1280*1280");
 
+        int connectSecRef = Math.max(15, llmProperties.getConnectTimeoutSeconds());
         HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .connectTimeout(Duration.ofSeconds(connectSecRef))
                 .build();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(llmProperties.getTimeoutSeconds()))
+                .timeout(Duration.ofSeconds(Math.max(connectSecRef, llmProperties.getTimeoutSeconds())))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + resolveImageApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
@@ -509,6 +511,51 @@ public class AiGenerationService {
         return StringUtils.hasText(message) && message.contains("IPInfringementSuspect");
     }
 
+    /**
+     * 剧场推荐流水线：抽取软性专业特征（非事实字段）。未配置模型时返回占位说明。
+     */
+    public String pipelineExtractSoftFeatures(String userQuery) {
+        String system = "你是戏剧方向特征分析师。只根据用户自然语言提炼：表演关注点、体裁气质、舞台视听关键词；条目式，总字数不超过 160。"
+                + "禁止编造具体票价、场次时间、场馆地址；禁止虚构用户未提及的具体剧目名与演员名。";
+        String user = "用户描述：" + (StringUtils.hasText(userQuery) ? userQuery.trim() : "");
+        if (!getMissingConfigReasons().isEmpty()) {
+            return "【演示】未配置文本大模型：软性特征将仅由规则意图与图谱/mock 数据支撑。";
+        }
+        try {
+            String out = callChatCompletions(system, user);
+            return StringUtils.hasText(out) ? out.trim() : "【模型无输出】";
+        } catch (Exception e) {
+            log.warn("pipelineExtractSoftFeatures failed: {}", e.getMessage());
+            return "【特征抽取失败】" + e.getMessage();
+        }
+    }
+
+    /**
+     * 剧场推荐流水线：在给定「事实区」约束下生成 JSON 观剧方案数组。
+     */
+    public String pipelineSynthesizePlansJson(String ragFactsBlock, String expertSoftFeatures, String userQuery, int minPlans, int maxPlans) {
+        int lo = Math.max(3, Math.min(minPlans, 5));
+        int hi = Math.max(lo, Math.min(maxPlans, 5));
+        String system = "你是餐剧盒行程统筹助手。"
+                + "你只能使用「事实区」中出现的剧目名与价格数字；没有的信息写「未提供」或「需用户补充」，禁止编造票价、场次与地址。"
+                + "输出严格 JSON 数组（不要 markdown），元素个数在 " + lo + " 到 " + hi + " 之间。"
+                + "每个元素必须是对象，字段：playName, priceNote, graphReason, softAngle, foodHint, transitHint。"
+                + "priceNote 必须复述事实区中的价格区间或写未提供；softAngle 需呼应软性特征摘要。";
+        String user = "【用户原话】\n" + (StringUtils.hasText(userQuery) ? userQuery.trim() : "")
+                + "\n\n【软性特征摘要】\n" + (StringUtils.hasText(expertSoftFeatures) ? expertSoftFeatures : "无")
+                + "\n\n【事实区 — 仅允许使用其中的剧目与价格】\n" + (StringUtils.hasText(ragFactsBlock) ? ragFactsBlock : "无");
+        if (!getMissingConfigReasons().isEmpty()) {
+            return "[]";
+        }
+        try {
+            String out = callChatCompletions(system, user);
+            return StringUtils.hasText(out) ? out.trim() : "[]";
+        } catch (Exception e) {
+            log.warn("pipelineSynthesizePlansJson failed: {}", e.getMessage());
+            return "[]";
+        }
+    }
+
     private String callChatCompletions(String system, String user) throws Exception {
         String base = llmProperties.getBaseUrl().replaceAll("/+$", "");
         String url = base + "/chat/completions";
@@ -523,13 +570,14 @@ public class AiGenerationService {
         m1.put("role", "user");
         m1.put("content", user);
 
+        int connectSecChat = Math.max(15, llmProperties.getConnectTimeoutSeconds());
         HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .connectTimeout(Duration.ofSeconds(connectSecChat))
                 .build();
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .timeout(Duration.ofSeconds(llmProperties.getTimeoutSeconds()))
+                .timeout(Duration.ofSeconds(Math.max(connectSecChat, llmProperties.getTimeoutSeconds())))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + llmProperties.getApiKey())
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))

@@ -8,6 +8,9 @@ app:
       # 文本生成（review/plot/actor）配置
       base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
       model: qwen-turbo
+      # 连接建立超时（秒）；若报 HTTP connect timed out 可适当加大，如 120
+      connect-timeout-seconds: 90
+      timeout-seconds: 120
       # 图像生成（poster/merch）配置；image-api-key 不填则默认复用 api-key
       image-base-url: https://dashscope.aliyuncs.com/api/v1
       image-model: wan2.6-t2i

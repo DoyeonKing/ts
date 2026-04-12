@@ -36,6 +36,11 @@ public class AiLlmProperties {
     private int timeoutSeconds = 120;
 
     /**
+     * 建立连接超时（秒）。过短易出现 “HTTP connect timed out”，可适当加大。
+     */
+    private int connectTimeoutSeconds = 90;
+
+    /**
      * 图像生成专用 API Key；为空时回退使用 apiKey。
      */
     private String imageApiKey = "";

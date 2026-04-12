@@ -5,10 +5,12 @@ import com.example.springboot.dto.GenerateCreativeFromImageRequest;
 import com.example.springboot.dto.GenerateCreativeRequest;
 import com.example.springboot.dto.GenerateCreativeResponse;
 import com.example.springboot.dto.RecommendRequest;
+import com.example.springboot.dto.TheaterPipelineRecommendRequest;
 import com.example.springboot.dto.GenerateTextRequest;
 import com.example.springboot.dto.GenerateTextResponse;
 import com.example.springboot.service.AiGenerationService;
 import com.example.springboot.service.AiRecommendService;
+import com.example.springboot.service.TheaterRecommendPipelineService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -28,6 +30,7 @@ public class AiGenerationController {
 
     private final AiGenerationService aiGenerationService;
     private final AiRecommendService aiRecommendService;
+    private final TheaterRecommendPipelineService theaterRecommendPipelineService;
 
     /**
      * 文字类 AI 生成：观后感、剧情分析、演员评价。
@@ -88,5 +91,16 @@ public class AiGenerationController {
                              @RequestParam Long playId,
                              @RequestParam(required = false) Integer topK) {
         return Result.success(aiRecommendService.recommendCompanions(userId, playId, topK));
+    }
+
+    /**
+     * 高级流水线：NLU + 知识图谱召回 + mock 结构化事实 +（可选）LLM 软性特征与 JSON 方案统筹。
+     * 与 Day4 的 /recommend 并存，便于对比与答辩展示。
+     */
+    @PostMapping("/recommend/pipeline")
+    @Operation(summary = "剧场推荐流水线", description = "图谱+mock+RAG+JSON；useLlm=false 可完全离线演示")
+    public Result recommendPipeline(@RequestBody(required = false) TheaterPipelineRecommendRequest request) {
+        TheaterPipelineRecommendRequest req = request == null ? new TheaterPipelineRecommendRequest() : request;
+        return Result.success(theaterRecommendPipelineService.run(req));
     }
 }

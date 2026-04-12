@@ -77,6 +77,20 @@ public class AiRecommendService {
         return resp;
     }
 
+    /**
+     * 供高级流水线复用：从自然语言解析类型/标签/演员/预算意图（基于 mock 剧目词表）。
+     */
+    public Map<String, Object> extractIntentProfile(String query) {
+        List<MockPlayProfile> plays = mockDataService.getPlays();
+        QueryIntent intent = parseIntent(query, plays);
+        Map<String, Object> profile = new LinkedHashMap<>();
+        profile.put("targetGenres", new ArrayList<>(intent.targetGenres));
+        profile.put("targetTags", new ArrayList<>(intent.targetTags));
+        profile.put("targetActor", intent.targetActor);
+        profile.put("budget", Map.of("min", intent.budgetMin, "max", intent.budgetMax));
+        return profile;
+    }
+
     public Map<String, Object> recommendCompanions(Long userId, Long playId, Integer topK) {
         List<MockPlayProfile> plays = mockDataService.getPlays();
         List<MockUserPreference> users = mockDataService.getUserPreferences();
