@@ -1,23 +1,31 @@
 <template>
 	<view class="page">
-		<!-- 顶部工具栏 -->
-		<view class="toolbar">
-			<view class="filter-row">
-				<view
-					v-for="t in typeFilters" :key="t.key"
-					class="filter-btn"
-					:class="{ active: activeTypes.includes(t.key) }"
-					:style="{ borderColor: t.color, color: activeTypes.includes(t.key) ? '#fff' : t.color, background: activeTypes.includes(t.key) ? t.color : 'transparent' }"
-					@click="toggleType(t.key)"
-				>{{ t.label }}</view>
-			</view>
-			<view class="search-row">
-				<input class="search-input" v-model="searchKey" placeholder="搜索节点..." @confirm="onSearch" />
-				<view class="search-btn" @click="onSearch">搜</view>
+		<view class="toolbar-shell">
+			<view class="toolbar">
+				<view class="toolbar-top">
+					<view class="toolbar-title-wrap">
+						<text class="toolbar-kicker">STAGE MAP</text>
+						<text class="toolbar-title">知识图谱全景</text>
+					</view>
+					<view class="toolbar-badge">拖拽 · 搜索 · 聚焦</view>
+				</view>
+				<view class="filter-row">
+					<view
+						v-for="t in typeFilters" :key="t.key"
+						class="filter-btn"
+						:class="{ active: activeTypes.includes(t.key) }"
+						:style="{ borderColor: activeTypes.includes(t.key) ? t.color : 'rgba(255,255,255,0.14)', color: activeTypes.includes(t.key) ? '#fff7eb' : 'rgba(255,240,228,0.72)', background: activeTypes.includes(t.key) ? t.color : 'rgba(255,255,255,0.04)' }"
+						@click="toggleType(t.key)"
+					>{{ t.label }}</view>
+				</view>
+				<view class="search-row">
+					<input class="search-input" v-model="searchKey" placeholder="搜索节点、人物、术语..." placeholder-style="color: rgba(255,240,228,0.35);" @confirm="onSearch" />
+					<view class="search-btn" @click="onSearch">搜索</view>
+				</view>
 			</view>
 		</view>
 
-		<!-- Canvas 图谱 -->
+		<view class="tap-guide">轻点节点会弹出操作菜单，可直接查看详情；节点密集时请点圆心附近</view>
 		<canvas
 			type="2d"
 			id="graphCanvas"
@@ -29,10 +37,13 @@
 		></canvas>
 
 		<!-- 图例 -->
-		<view class="legend">
-			<view class="legend-item" v-for="t in typeFilters" :key="t.key">
-				<view class="legend-dot" :style="{ background: t.color }"></view>
-				<text class="legend-text">{{ t.label }}</text>
+		<view class="legend-shell">
+			<view class="tap-hint">轻点圆形节点查看详情，拖动画布可移动视角</view>
+			<view class="legend">
+				<view class="legend-item" v-for="t in typeFilters" :key="t.key">
+					<view class="legend-dot" :style="{ background: t.color, boxShadow: '0 0 12rpx ' + t.color }"></view>
+					<text class="legend-text">{{ t.label }}</text>
+				</view>
 			</view>
 		</view>
 
@@ -71,7 +82,8 @@
 
 		<!-- 加载状态 -->
 		<view class="loading-mask" v-if="loading">
-			<text class="loading-text">加载图谱中...</text>
+			<view class="loading-ring"></view>
+			<text class="loading-text">舞台布景加载中...</text>
 		</view>
 	</view>
 </template>
@@ -112,6 +124,8 @@ export default {
 
 			selectedNode: null,
 			nodeRecommendations: { plays: [], actors: [], others: [] },
+			recommendationCache: {},
+			recommendationTimer: null,
 			searchKey: '',
 			loading: false,
 
@@ -132,6 +146,8 @@ export default {
 			// 触摸状态
 			touchStartX: 0,
 			touchStartY: 0,
+			pressCandidateNode: null,
+			pressStartedOnNode: false,
 			draggingNode: null,
 			isPanning: false,
 			lastPanX: 0,
@@ -163,14 +179,42 @@ export default {
 		this.initCanvas()
 	},
 
+	onShow() {
+		if (this.selectedNode) {
+			this.selectedNode = null
+			this.nodeRecommendations = { plays: [], actors: [], others: [] }
+		}
+		this.pressCandidateNode = null
+		this.pressStartedOnNode = false
+		this.draggingNode = null
+		this.isPanning = false
+		if (this.ctx) {
+			this.$nextTick(() => this.render())
+		}
+	},
+
 	onUnload() {
 		this.simRunning = false
+		if (this.recommendationTimer) {
+			clearTimeout(this.recommendationTimer)
+			this.recommendationTimer = null
+		}
 	},
 
 	watch: {
 		selectedNode(n) {
-			if (n && n.id) this.loadNodeRecommendations(n.id)
-			else this.nodeRecommendations = { plays: [], actors: [], others: [] }
+			if (this.recommendationTimer) {
+				clearTimeout(this.recommendationTimer)
+				this.recommendationTimer = null
+			}
+			if (n && n.id) {
+				this.nodeRecommendations = this.recommendationCache[n.id] || { plays: [], actors: [], others: [] }
+				this.recommendationTimer = setTimeout(() => {
+					this.loadNodeRecommendations(n.id)
+				}, 120)
+			} else {
+				this.nodeRecommendations = { plays: [], actors: [], others: [] }
+			}
 		}
 	},
 
@@ -184,28 +228,42 @@ export default {
 
 	methods: {
 		async loadNodeRecommendations(nodeId) {
+			if (this.recommendationCache[nodeId]) {
+				this.nodeRecommendations = this.recommendationCache[nodeId]
+				return
+			}
 			try {
 				const res = await getRecommendationsForNode(nodeId)
 				const data = res.data || res
-				this.nodeRecommendations = {
+				const nextRecommendations = {
 					plays: data.plays || [],
 					actors: data.actors || [],
 					others: data.others || []
 				}
+				this.recommendationCache = {
+					...this.recommendationCache,
+					[nodeId]: nextRecommendations
+				}
+				if (this.selectedNode && this.selectedNode.id === nodeId) {
+					this.nodeRecommendations = nextRecommendations
+				}
 			} catch (e) {
-				this.nodeRecommendations = { plays: [], actors: [], others: [] }
+				if (this.selectedNode && this.selectedNode.id === nodeId) {
+					this.nodeRecommendations = { plays: [], actors: [], others: [] }
+				}
 			}
 		},
 		/** 进入当前选中节点的详情页（剧目/演员/术语等） */
 		goToNodeDetail(node) {
 			if (!node) return
 			this.selectedNode = null
+			const encodedName = encodeURIComponent(node.name || '')
 			if (node.nodeType === 'PLAY') {
-				uni.navigateTo({ url: `/pages/play-detail/play-detail?id=${node.id}` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/play-detail/play-detail?nodeId=${node.id}&name=${encodedName}` }).catch(() => {})
 			} else if (node.nodeType === 'ACTOR') {
-				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?id=${node.id}` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?nodeId=${node.id}&name=${encodedName}` }).catch(() => {})
 			} else if (node.nodeType === 'TERMINOLOGY') {
-				uni.navigateTo({ url: `/pages/terminology/terminology` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/terminology/terminology?nodeId=${node.id}&name=${encodedName}` }).catch(() => {})
 			} else {
 				this.focusNode(node.id)
 			}
@@ -218,12 +276,13 @@ export default {
 		/** 点击「猜你喜欢」某一项：跳转详情或在图谱中展开 */
 		onRecommendClick(r) {
 			this.selectedNode = null
+			const encodedName = encodeURIComponent(r.name || '')
 			if (r.nodeType === 'PLAY') {
-				uni.navigateTo({ url: `/pages/play-detail/play-detail?id=${r.id}` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/play-detail/play-detail?nodeId=${r.id}&name=${encodedName}` }).catch(() => {})
 			} else if (r.nodeType === 'ACTOR') {
-				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?id=${r.id}` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?nodeId=${r.id}&name=${encodedName}` }).catch(() => {})
 			} else if (r.nodeType === 'TERMINOLOGY') {
-				uni.navigateTo({ url: `/pages/terminology/terminology` }).catch(() => {})
+				uni.navigateTo({ url: `/pages/terminology/terminology?nodeId=${r.id}&name=${encodedName}` }).catch(() => {})
 			} else {
 				this.focusNode(r.id)
 			}
@@ -451,16 +510,38 @@ export default {
 			const sc = this.scale
 			const nodeMap = {}
 			this.simNodes.forEach(n => { nodeMap[n.id] = n })
+			const selectedId = this.selectedNode ? this.selectedNode.id : null
+			const relatedNodeIds = new Set()
+			const relatedEdgeIds = new Set()
+			if (selectedId) {
+				relatedNodeIds.add(selectedId)
+				this.simEdges.forEach(e => {
+					if (e.source === selectedId || e.target === selectedId) {
+						relatedEdgeIds.add(e.id)
+						relatedNodeIds.add(e.source)
+						relatedNodeIds.add(e.target)
+					}
+				})
+			}
 
 			if (this.canvas) {
-				// 新版 canvas 2d
 				ctx.clearRect(0, 0, w, h)
+				const bgGradient = ctx.createLinearGradient(0, 0, 0, h)
+				bgGradient.addColorStop(0, '#0f0609')
+				bgGradient.addColorStop(0.45, '#1b0b11')
+				bgGradient.addColorStop(1, '#090305')
+				ctx.fillStyle = bgGradient
+				ctx.fillRect(0, 0, w, h)
+				const glow = ctx.createRadialGradient(w * 0.74, h * 0.18, 0, w * 0.74, h * 0.18, Math.max(w, h) * 0.45)
+				glow.addColorStop(0, 'rgba(242, 201, 76, 0.14)')
+				glow.addColorStop(1, 'rgba(242, 201, 76, 0)')
+				ctx.fillStyle = glow
+				ctx.fillRect(0, 0, w, h)
 			} else {
-				ctx.setFillStyle('#f5f5f5')
+				ctx.setFillStyle('#10070b')
 				ctx.fillRect(0, 0, w, h)
 			}
 
-			// 绘制边
 			this.simEdges.forEach(e => {
 				const a = nodeMap[e.source]
 				const b = nodeMap[e.target]
@@ -469,87 +550,101 @@ export default {
 				const y1 = a.y * sc + oy
 				const x2 = b.x * sc + ox
 				const y2 = b.y * sc + oy
+				const isRelated = !selectedId || relatedEdgeIds.has(e.id)
+				const edgeOpacity = selectedId ? (isRelated ? 0.72 : 0.12) : 0.3
 
 				ctx.beginPath()
 				ctx.moveTo(x1, y1)
 				ctx.lineTo(x2, y2)
 				if (this.canvas) {
-					ctx.strokeStyle = 'rgba(180,180,200,0.5)'
-					ctx.lineWidth = 1
+					ctx.strokeStyle = isRelated ? `rgba(242, 201, 76, ${edgeOpacity})` : `rgba(238, 228, 229, ${edgeOpacity})`
+					ctx.lineWidth = isRelated ? 1.6 : 1
+					if (isRelated) {
+						ctx.shadowBlur = 10
+						ctx.shadowColor = 'rgba(242, 201, 76, 0.26)'
+					}
 				} else {
-					ctx.setStrokeStyle('rgba(180,180,200,0.5)')
-					ctx.setLineWidth(1)
+					ctx.setStrokeStyle(isRelated ? `rgba(242, 201, 76, ${edgeOpacity})` : `rgba(238, 228, 229, ${edgeOpacity})`)
+					ctx.setLineWidth(isRelated ? 1.6 : 1)
 				}
 				ctx.stroke()
+				if (this.canvas) {
+					ctx.shadowBlur = 0
+				}
 
-				// 边上的标签
-				if (e.label) {
+				if (e.label && isRelated) {
 					const mx = (x1 + x2) / 2
 					const my = (y1 + y2) / 2
 					if (this.canvas) {
 						ctx.font = `${9 * sc}px sans-serif`
-						ctx.fillStyle = '#999'
+						ctx.fillStyle = 'rgba(255,240,228,0.64)'
 						ctx.textAlign = 'center'
 						ctx.textBaseline = 'middle'
 					} else {
 						ctx.setFontSize(9 * sc)
-						ctx.setFillStyle('#999')
+						ctx.setFillStyle('rgba(255,240,228,0.64)')
 						ctx.setTextAlign('center')
 						ctx.setTextBaseline('middle')
 					}
-					ctx.fillText(e.label, mx, my - 6 * sc)
+					ctx.fillText(e.label, mx, my - 8 * sc)
 				}
 			})
 
-			// 绘制节点
 			this.simNodes.forEach(n => {
 				const x = n.x * sc + ox
 				const y = n.y * sc + oy
 				const r = n.radius * sc
 				const color = TYPE_COLORS[n.nodeType] || '#999'
+				const isSelected = selectedId === n.id
+				const isRelated = !selectedId || relatedNodeIds.has(n.id)
+				const nodeOpacity = selectedId ? (isRelated ? 1 : 0.28) : 1
 
-				// 选中高亮
-				const isSelected = this.selectedNode && this.selectedNode.id === n.id
+				if (this.canvas) {
+					ctx.save()
+					ctx.globalAlpha = nodeOpacity
+				}
 
-				// 外发光
-				if (isSelected) {
+				if (this.canvas) {
 					ctx.beginPath()
-					ctx.arc(x, y, r + 4 * sc, 0, Math.PI * 2)
-					if (this.canvas) {
-						ctx.fillStyle = color + '40'
-					} else {
-						ctx.setFillStyle(color + '40')
-					}
+					ctx.arc(x, y, r + (isSelected ? 16 * sc : 10 * sc), 0, Math.PI * 2)
+					const outerGlow = ctx.createRadialGradient(x, y, r * 0.2, x, y, r + 18 * sc)
+					outerGlow.addColorStop(0, isSelected ? 'rgba(255, 248, 231, 0.56)' : 'rgba(255,255,255,0.18)')
+					outerGlow.addColorStop(1, 'rgba(255,255,255,0)')
+					ctx.fillStyle = outerGlow
 					ctx.fill()
 				}
 
-				// 圆形节点
 				ctx.beginPath()
 				ctx.arc(x, y, r, 0, Math.PI * 2)
 				if (this.canvas) {
-					ctx.fillStyle = color
+					const nodeGradient = ctx.createLinearGradient(x - r, y - r, x + r, y + r)
+					nodeGradient.addColorStop(0, '#fff2da')
+					nodeGradient.addColorStop(0.22, color)
+					nodeGradient.addColorStop(1, '#2f0c17')
+					ctx.fillStyle = nodeGradient
+					ctx.shadowBlur = isSelected ? 18 : 10
+					ctx.shadowColor = color
 				} else {
 					ctx.setFillStyle(color)
 				}
 				ctx.fill()
 
-				// 白色边框
 				ctx.beginPath()
 				ctx.arc(x, y, r, 0, Math.PI * 2)
 				if (this.canvas) {
-					ctx.strokeStyle = '#fff'
-					ctx.lineWidth = 2 * sc
+					ctx.strokeStyle = isSelected ? '#fff8e6' : 'rgba(255,255,255,0.84)'
+					ctx.lineWidth = isSelected ? 2.8 * sc : 1.8 * sc
+					ctx.shadowBlur = 0
 				} else {
 					ctx.setStrokeStyle('#fff')
 					ctx.setLineWidth(2 * sc)
 				}
 				ctx.stroke()
 
-				// 节点文字
 				const fontSize = Math.max(10, Math.min(13, r * 0.7)) * sc
 				if (this.canvas) {
 					ctx.font = `bold ${fontSize}px sans-serif`
-					ctx.fillStyle = '#fff'
+					ctx.fillStyle = '#fff9ef'
 					ctx.textAlign = 'center'
 					ctx.textBaseline = 'middle'
 				} else {
@@ -559,34 +654,66 @@ export default {
 					ctx.setTextBaseline('middle')
 				}
 
-				// 长文本截断
 				let label = n.name
 				if (label.length > 4) {
 					label = label.substring(0, 3) + '..'
 				}
 				ctx.fillText(label, x, y)
 
-				// 节点下方完整名称
 				if (n.name.length > 4) {
 					const subSize = 9 * sc
 					if (this.canvas) {
 						ctx.font = `${subSize}px sans-serif`
-						ctx.fillStyle = '#666'
+						ctx.fillStyle = isRelated ? 'rgba(255,240,228,0.78)' : 'rgba(255,240,228,0.34)'
 					} else {
 						ctx.setFontSize(subSize)
-						ctx.setFillStyle('#666')
+						ctx.setFillStyle('#d7c1c3')
 					}
-					ctx.fillText(n.name, x, y + r + 12 * sc)
+					ctx.fillText(n.name, x, y + r + 14 * sc)
+				}
+
+				if (this.canvas) {
+					ctx.restore()
 				}
 			})
 
-			// 旧版 canvas 需要 draw
 			if (!this.canvas) {
 				ctx.draw()
 			}
 		},
 
 		// ===== 触摸交互 =====
+
+		openNodeActions(node) {
+			if (!node) return
+			this.selectedNode = node
+			this.render()
+			const items = []
+			if (this.hasNodeDetailPage(node)) {
+				items.push(`查看${this.getTypeLabel(node.nodeType)}详情`)
+			}
+			items.push('以此为中心展开')
+			uni.showActionSheet({
+				itemList: items,
+				success: ({ tapIndex }) => {
+					const detailIndex = this.hasNodeDetailPage(node) ? 0 : -1
+					const focusIndex = this.hasNodeDetailPage(node) ? 1 : 0
+					if (tapIndex === detailIndex) {
+						this.goToNodeDetail(node)
+					} else if (tapIndex === focusIndex) {
+						this.selectedNode = null
+						this.nodeRecommendations = { plays: [], actors: [], others: [] }
+						this.render()
+						this.focusNode(node.id)
+					}
+				},
+				fail: () => {
+					this.selectedNode = null
+					this.nodeRecommendations = { plays: [], actors: [], others: [] }
+					this.render()
+				}
+			})
+		},
 
 		getCanvasLocalXY(touch) {
 			if (this.canvasRect && touch.clientX != null && touch.clientY != null)
@@ -601,27 +728,29 @@ export default {
 			this.touchStartY = local.y
 			this.lastPanX = local.x
 			this.lastPanY = local.y
-
-			// 检测是否点中了节点
-			const hit = this.hitTestNode(local.x, local.y)
-			if (hit) {
-				this.draggingNode = hit
-			} else {
-				this.draggingNode = null
-				this.isPanning = true
-			}
+			this.pressCandidateNode = this.hitTestNode(local.x, local.y)
+			this.pressStartedOnNode = !!this.pressCandidateNode
+			this.draggingNode = null
+			this.isPanning = !this.pressStartedOnNode
 		},
 
 		onTouchMove(e) {
 			const touch = e.touches[0]
 			const local = this.getCanvasLocalXY(touch)
-			if (this.draggingNode) {
-				this.draggingNode.x = (local.x - this.offsetX) / this.scale
-				this.draggingNode.y = (local.y - this.offsetY) / this.scale
-				this.draggingNode.vx = 0
-				this.draggingNode.vy = 0
-				this.render()
-			} else if (this.isPanning) {
+			const moveX = local.x - this.touchStartX
+			const moveY = local.y - this.touchStartY
+			const movedFar = Math.abs(moveX) > 10 || Math.abs(moveY) > 10
+
+			if (this.pressStartedOnNode) {
+				// 手机上优先保证“轻点节点能打开详情”，节点不再直接拖拽
+				return
+			}
+
+			if (movedFar) {
+				this.isPanning = true
+			}
+
+			if (this.isPanning) {
 				const dx = local.x - this.lastPanX
 				const dy = local.y - this.lastPanY
 				this.offsetX += dx
@@ -637,21 +766,17 @@ export default {
 			const local = this.getCanvasLocalXY(touch)
 			const dx = Math.abs(local.x - this.touchStartX)
 			const dy = Math.abs(local.y - this.touchStartY)
+			const tappedNode = this.pressCandidateNode && dx < 16 && dy < 16 ? this.pressCandidateNode : null
 
-			// 点击（非拖拽）：放宽阈值，避免轻微滑动被当成拖拽
-			if (dx < 12 && dy < 12) {
-				const hit = this.hitTestNode(local.x, local.y)
-				if (hit) {
-					this.selectedNode = hit
-					this.render()
-				} else {
-					if (this.selectedNode) {
-						this.selectedNode = null
-						this.render()
-					}
-				}
+			if (tappedNode) {
+				this.openNodeActions(tappedNode)
+			} else if (dx < 10 && dy < 10 && this.selectedNode) {
+				this.selectedNode = null
+				this.render()
 			}
 
+			this.pressCandidateNode = null
+			this.pressStartedOnNode = false
 			this.draggingNode = null
 			this.isPanning = false
 		},
@@ -660,20 +785,23 @@ export default {
 			const ox = this.offsetX
 			const oy = this.offsetY
 			const sc = this.scale
-			// 扩大可点击区域，方便小圆和手指点击
-			const hitPadding = 24
+			let bestNode = null
+			let bestDistance = Number.POSITIVE_INFINITY
 			for (let i = this.simNodes.length - 1; i >= 0; i--) {
 				const n = this.simNodes[i]
 				const nx = n.x * sc + ox
 				const ny = n.y * sc + oy
-				const r = n.radius * sc + hitPadding
+				const visualRadius = Math.max(n.radius * sc, 18)
+				const hitRadius = Math.max(visualRadius + 18, 28)
 				const dx = x - nx
 				const dy = y - ny
-				if (dx * dx + dy * dy <= r * r) {
-					return n
+				const distance = Math.sqrt(dx * dx + dy * dy)
+				if (distance <= hitRadius && distance < bestDistance) {
+					bestNode = n
+					bestDistance = distance
 				}
 			}
-			return null
+			return bestNode
 		},
 
 		// ===== 功能操作 =====
@@ -727,6 +855,7 @@ export default {
 			this.focusNodeId = nodeId
 			this.offsetX = this.canvasW / 2
 			this.offsetY = this.canvasH / 2
+			this.scale = this.focusNodeId ? 1.15 : 1
 			await this.loadData()
 		},
 
@@ -746,33 +875,74 @@ export default {
 	position: relative;
 	width: 100vw;
 	height: 100vh;
-	background: #f5f5f5;
+	background:
+		radial-gradient(circle at 78% 16%, rgba(242, 201, 76, 0.16), transparent 26%),
+		radial-gradient(circle at 8% 10%, rgba(186, 61, 78, 0.18), transparent 28%),
+		linear-gradient(180deg, #0f0609 0%, #17080d 34%, #12060a 100%);
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
 }
 
-.toolbar {
-	padding: 16rpx 20rpx 12rpx;
-	background: #fff;
-	box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
+.toolbar-shell {
+	padding: 18rpx 18rpx 10rpx;
+	position: relative;
 	z-index: 10;
+}
+.toolbar {
+	padding: 20rpx 20rpx 18rpx;
+	background: rgba(31, 11, 18, 0.78);
+	border: 1rpx solid rgba(255, 244, 229, 0.1);
+	box-shadow: 0 18rpx 36rpx rgba(0,0,0,0.28);
+	border-radius: 26rpx;
+	backdrop-filter: blur(18rpx);
+}
+.toolbar-top {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 18rpx;
+	margin-bottom: 18rpx;
+}
+.toolbar-title-wrap { flex: 1; }
+.toolbar-kicker {
+	display: block;
+	font-size: 18rpx;
+	letter-spacing: 3rpx;
+	color: rgba(242, 201, 76, 0.84);
+	margin-bottom: 8rpx;
+}
+.toolbar-title {
+	display: block;
+	font-size: 34rpx;
+	font-weight: 700;
+	color: #fff4e8;
+}
+.toolbar-badge {
+	padding: 10rpx 18rpx;
+	border-radius: 999rpx;
+	background: rgba(255, 255, 255, 0.06);
+	border: 1rpx solid rgba(255, 255, 255, 0.08);
+	font-size: 22rpx;
+	color: rgba(255, 240, 228, 0.82);
+	white-space: nowrap;
 }
 .filter-row {
 	display: flex;
 	gap: 12rpx;
 	flex-wrap: wrap;
-	margin-bottom: 12rpx;
+	margin-bottom: 14rpx;
 }
 .filter-btn {
 	font-size: 22rpx;
-	padding: 6rpx 18rpx;
-	border-radius: 20rpx;
-	border: 2rpx solid #ccc;
+	padding: 8rpx 18rpx;
+	border-radius: 999rpx;
+	border: 2rpx solid rgba(255,255,255,0.12);
 	transition: all 0.2s;
 }
 .filter-btn.active {
-	color: #fff;
+	color: #fff7eb;
+	box-shadow: 0 8rpx 18rpx rgba(0,0,0,0.16);
 }
 .search-row {
 	display: flex;
@@ -781,44 +951,75 @@ export default {
 }
 .search-input {
 	flex: 1;
-	height: 56rpx;
-	background: #f5f5f5;
-	border-radius: 28rpx;
+	height: 60rpx;
+	background: rgba(255,255,255,0.06);
+	border: 1rpx solid rgba(255,255,255,0.08);
+	border-radius: 30rpx;
 	padding: 0 24rpx;
 	font-size: 26rpx;
+	color: #fff3ea;
 }
 .search-btn {
-	width: 72rpx;
-	height: 56rpx;
-	line-height: 56rpx;
+	min-width: 110rpx;
+	height: 60rpx;
+	line-height: 60rpx;
 	text-align: center;
-	background: #6366f1;
-	color: #fff;
-	border-radius: 28rpx;
+	background: linear-gradient(135deg, #f2c94c, #c17f39);
+	color: #43111a;
+	border-radius: 30rpx;
 	font-size: 26rpx;
+	font-weight: 700;
+	box-shadow: 0 10rpx 22rpx rgba(193,127,57,0.24);
+}
+
+.tap-guide {
+	position: relative;
+	z-index: 8;
+	margin: 0 18rpx 8rpx;
+	padding: 12rpx 18rpx;
+	border-radius: 16rpx;
+	background: rgba(242, 201, 76, 0.14);
+	border: 1rpx solid rgba(242, 201, 76, 0.22);
+	font-size: 22rpx;
+	color: #fbe7b4;
 }
 
 .graph-canvas {
 	flex: 1;
-	background: #f5f5f5;
+	background: transparent;
 }
 
-.legend {
+ .legend-shell {
 	position: absolute;
+	left: 18rpx;
 	bottom: 24rpx;
-	left: 20rpx;
+	z-index: 5;
+}
+.tap-hint {
+	margin-bottom: 12rpx;
+	padding: 12rpx 16rpx;
+	background: rgba(19, 7, 11, 0.78);
+	border: 1rpx solid rgba(255,255,255,0.08);
+	border-radius: 14rpx;
+	font-size: 22rpx;
+	color: rgba(255,240,228,0.82);
+	backdrop-filter: blur(12rpx);
+}
+.legend {
 	display: flex;
 	gap: 16rpx;
-	background: rgba(255,255,255,0.92);
-	padding: 10rpx 20rpx;
-	border-radius: 16rpx;
-	box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.1);
-	z-index: 5;
+	flex-wrap: wrap;
+	max-width: 86vw;
+	background: rgba(19, 7, 11, 0.72);
+	padding: 12rpx 18rpx;
+	border-radius: 18rpx;
+	border: 1rpx solid rgba(255,255,255,0.08);
+	backdrop-filter: blur(14rpx);
 }
 .legend-item {
 	display: flex;
 	align-items: center;
-	gap: 6rpx;
+	gap: 8rpx;
 }
 .legend-dot {
 	width: 16rpx;
@@ -827,24 +1028,25 @@ export default {
 }
 .legend-text {
 	font-size: 20rpx;
-	color: #666;
+	color: rgba(255,240,228,0.8);
 }
 
-/* 详情弹窗 */
 .detail-mask {
 	position: fixed;
 	top: 0; left: 0; right: 0; bottom: 0;
-	background: rgba(0,0,0,0.35);
+	background: rgba(0,0,0,0.4);
 	display: flex;
 	align-items: flex-end;
 	justify-content: center;
 	z-index: 100;
+	backdrop-filter: blur(4rpx);
 }
 .detail-card {
 	width: 92%;
-	background: #fff;
-	border-radius: 28rpx 28rpx 0 0;
+	background: linear-gradient(180deg, rgba(255,248,241,0.98), rgba(255,238,224,0.96));
+	border-radius: 30rpx 30rpx 0 0;
 	padding: 40rpx 36rpx 60rpx;
+	box-shadow: 0 -12rpx 40rpx rgba(0,0,0,0.18);
 }
 .detail-header {
 	display: flex;
@@ -856,30 +1058,30 @@ export default {
 	width: 24rpx;
 	height: 24rpx;
 	border-radius: 50%;
+	box-shadow: 0 0 14rpx currentColor;
 }
 .detail-name {
 	font-size: 36rpx;
-	font-weight: bold;
-	color: #333;
+	font-weight: 700;
+	color: #45131a;
 }
 .detail-type {
 	font-size: 24rpx;
-	color: #999;
+	color: #9a6d50;
 	margin-left: auto;
 }
 .detail-desc {
 	font-size: 28rpx;
-	color: #666;
-	line-height: 1.6;
+	color: #6d4d4f;
+	line-height: 1.7;
 	display: block;
 	margin-bottom: 16rpx;
 }
-.detail-links {
-	margin-bottom: 24rpx;
-}
+.detail-links { margin-bottom: 24rpx; }
 .detail-link-count {
 	font-size: 26rpx;
-	color: #6366f1;
+	color: #8f2433;
+	font-weight: 600;
 }
 .detail-actions {
 	display: flex;
@@ -889,41 +1091,95 @@ export default {
 	flex: 1;
 	text-align: center;
 	padding: 20rpx;
-	border-radius: 16rpx;
+	border-radius: 18rpx;
 	font-size: 28rpx;
-	background: #6366f1;
-	color: #fff;
+	background: linear-gradient(135deg, #6e1826, #9f3044);
+	color: #fff7eb;
+	box-shadow: 0 12rpx 26rpx rgba(110,24,38,0.18);
 }
 .detail-btn.primary {
-	background: #6366f1;
-	color: #fff;
+	background: linear-gradient(135deg, #4d1220, #7f2231);
 }
 .detail-btn.secondary {
-	background: #f0f0f0;
-	color: #666;
+	background: rgba(127, 34, 49, 0.08);
+	color: #7f2231;
+	box-shadow: none;
+	border: 1rpx solid rgba(127,34,49,0.14);
 }
-.detail-rec { margin: 20rpx 0; padding-top: 20rpx; border-top: 1rpx solid #eee; }
-.detail-rec-title { font-size: 26rpx; color: #6366f1; display: block; margin-bottom: 12rpx; }
-.detail-rec-list { display: flex; flex-direction: column; gap: 10rpx; max-height: 260rpx; overflow-y: auto; }
-.detail-rec-item { display: flex; align-items: center; padding: 16rpx; background: #f8f8f8; border-radius: 12rpx; }
-.detail-rec-item:active { background: #eee; }
+.detail-rec {
+	background: rgba(255,255,255,0.5);
+	border-radius: 20rpx;
+	padding: 20rpx;
+	margin-bottom: 22rpx;
+}
+.detail-rec-title {
+	display: block;
+	font-size: 26rpx;
+	font-weight: 700;
+	color: #4d1220;
+	margin-bottom: 12rpx;
+}
+.detail-rec-list {
+	display: flex;
+	flex-direction: column;
+	gap: 12rpx;
+	max-height: 260rpx;
+	overflow-y: auto;
+}
+.detail-rec-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16rpx 18rpx;
+	border-radius: 16rpx;
+	background: rgba(255,248,241,0.8);
+}
 .detail-rec-text { flex: 1; min-width: 0; }
-.detail-rec-name { font-size: 26rpx; font-weight: 500; color: #333; display: block; }
-.detail-rec-reason { font-size: 22rpx; color: #888; display: block; margin-top: 4rpx; }
-.detail-rec-go { font-size: 32rpx; color: #999; margin-left: 12rpx; flex-shrink: 0; }
+.detail-rec-name {
+	display: block;
+	font-size: 26rpx;
+	color: #4b1620;
+	font-weight: 600;
+	margin-bottom: 6rpx;
+}
+.detail-rec-reason {
+	display: block;
+	font-size: 22rpx;
+	color: #8c6a64;
+	line-height: 1.5;
+}
+.detail-rec-go {
+	font-size: 30rpx;
+	color: #9f3044;
+	margin-left: 14rpx;
+	flex-shrink: 0;
+}
 
-/* 加载遮罩 */
 .loading-mask {
 	position: absolute;
 	top: 0; left: 0; right: 0; bottom: 0;
-	background: rgba(255,255,255,0.8);
+	background: rgba(10, 3, 5, 0.52);
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
+	gap: 20rpx;
 	z-index: 50;
+}
+.loading-ring {
+	width: 68rpx;
+	height: 68rpx;
+	border-radius: 50%;
+	border: 6rpx solid rgba(255,255,255,0.14);
+	border-top-color: #f2c94c;
+	animation: spin 0.9s linear infinite;
 }
 .loading-text {
 	font-size: 30rpx;
-	color: #666;
+	color: rgba(255,240,228,0.9);
+}
+@keyframes spin {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 </style>

@@ -4,8 +4,9 @@
 			<text class="title">{{ detail.name || '演出详情' }}</text>
 			<text class="venue">剧场：{{ detail.venue || '-' }}</text>
 			<text class="time">时间：{{ detail.time || '-' }}</text>
-			<text class="price">票价：{{ detail.price || '¥180起' }}</text>
-			<view class="btn-buy" @click="goSeatMode">立即购票 · 选座</view>
+			<text class="price">座位参考区间：{{ detail.price || '¥180起' }}</text>
+			<text class="hint">本功能仅用于参考选座与观演视角体验，不提供支付。</text>
+			<view class="btn-buy" @click="goSeatMode">进入 3D 选座参考</view>
 		</view>
 	</view>
 </template>
@@ -50,5 +51,6 @@ export default {
 .card { background: #fff; border-radius: 24rpx; padding: 40rpx; }
 .title { font-size: 36rpx; font-weight: bold; display: block; margin-bottom: 24rpx; }
 .venue, .time, .price { font-size: 28rpx; color: #666; display: block; margin-bottom: 16rpx; }
+.hint { font-size: 24rpx; color: #8b5e34; display: block; margin-top: 8rpx; line-height: 1.6; }
 .btn-buy { margin-top: 32rpx; background: #6366f1; color: #fff; text-align: center; padding: 28rpx; border-radius: 16rpx; font-size: 30rpx; }
 </style>

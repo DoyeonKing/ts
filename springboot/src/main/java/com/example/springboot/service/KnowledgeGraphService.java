@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -20,10 +19,17 @@ public class KnowledgeGraphService {
     private final KnowledgeNodeRepository nodeRepository;
     private final KnowledgeEdgeRepository edgeRepository;
 
+    private void ensureSeedDataInitialized() {
+        if (nodeRepository.count() == 0) {
+            initSeedData();
+        }
+    }
+
     /**
      * 获取完整的知识图谱（节点 + 边）
      */
     public Map<String, Object> getFullGraph() {
+        ensureSeedDataInitialized();
         List<KnowledgeNode> nodes = nodeRepository.findAll();
         List<KnowledgeEdge> edges = edgeRepository.findAll();
         return buildGraphResponse(nodes, edges);
@@ -33,6 +39,7 @@ public class KnowledgeGraphService {
      * 获取某个节点及其一度邻居组成的子图
      */
     public Map<String, Object> getNodeNeighborhood(Long nodeId) {
+        ensureSeedDataInitialized();
         KnowledgeNode center = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new RuntimeException("节点不存在: " + nodeId));
 
@@ -50,6 +57,7 @@ public class KnowledgeGraphService {
      * 按关键词搜索节点
      */
     public List<KnowledgeNode> searchNodes(String keyword) {
+        ensureSeedDataInitialized();
         return nodeRepository.findByNameContaining(keyword);
     }
 
@@ -57,6 +65,7 @@ public class KnowledgeGraphService {
      * 按类型查询节点
      */
     public List<KnowledgeNode> getNodesByType(NodeType type) {
+        ensureSeedDataInitialized();
         return nodeRepository.findByNodeType(type);
     }
 
@@ -64,6 +73,7 @@ public class KnowledgeGraphService {
      * 获取节点详情（含关联边数）
      */
     public Map<String, Object> getNodeDetail(Long nodeId) {
+        ensureSeedDataInitialized();
         KnowledgeNode node = nodeRepository.findById(nodeId)
                 .orElseThrow(() -> new RuntimeException("节点不存在: " + nodeId));
         List<KnowledgeEdge> edges = edgeRepository.findEdgesByNodeId(nodeId);
@@ -79,6 +89,7 @@ public class KnowledgeGraphService {
      * 按类型筛选的子图
      */
     public Map<String, Object> getGraphByTypes(List<String> types) {
+        ensureSeedDataInitialized();
         List<NodeType> nodeTypes = types.stream()
                 .map(t -> NodeType.valueOf(t.toUpperCase()))
                 .toList();

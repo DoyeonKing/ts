@@ -35,7 +35,7 @@
 					<text class="sd-status" :class="sd.hasSD ? 'yes' : 'no'">{{ sd.hasSD ? '有 SD' : '无 SD' }}</text>
 				</view>
 			</view>
-			<!-- 购票优惠 -->
+			<!-- 优惠信息 -->
 			<view v-show="currentTab === 3" class="tab-content">
 				<view class="discount-card" v-for="(d, i) in discounts" :key="i">
 					<text class="discount-title">{{ d.title }}</text>
@@ -52,7 +52,7 @@ export default {
 	data() {
 		return {
 			currentTab: 0,
-			tabs: ['演出列表', '排班表', 'SD信息', '购票优惠'],
+			tabs: ['演出列表', '排班表', 'SD信息', '优惠信息'],
 			performanceList: [
 				{ id: 1, name: '《哈姆雷特》', venue: '国家大剧院', time: '2024年3月1日 19:30', price: '¥180起' },
 				{ id: 2, name: '《天鹅湖》', venue: '北京舞蹈学院', time: '2024年3月2日 19:00', price: '¥280起' },
