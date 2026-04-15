@@ -19,6 +19,11 @@ public class PerformanceController {
 
     private final PerformanceService performanceService;
 
+    @GetMapping
+    public Result listOnSale() {
+        return Result.success(performanceService.findOnSale());
+    }
+
     @GetMapping("/play/{playId}")
     public Result listByPlayId(@PathVariable Long playId) {
         List<Performance> performances = performanceService.findByPlayId(playId);

@@ -5,6 +5,10 @@ server:
 
 # Spring Data Source (MySQL)
 spring:
+  config:
+    import:
+      - optional:file:./config/application-local.yml
+      - optional:file:./springboot/config/application-local.yml
   datasource:
     url: jdbc:mysql://localhost:3306/theater_db?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&allowPublicKeyRetrieval=true
     username: root
@@ -39,4 +43,14 @@ logging:
   level:
     org.springframework: INFO
     com.example: DEBUG
+
+app:
+  ai:
+    llm:
+      enabled: ${AI_LLM_ENABLED:false}
+      api-key: ${AI_API_KEY:}
+      base-url: ${AI_BASE_URL:}
+      model: ${AI_MODEL:}
+      timeout-seconds: 120
+      connect-timeout-seconds: 90
 

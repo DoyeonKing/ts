@@ -6,9 +6,11 @@
 			</view>
 		</view>
 		<view class="content">
-			<!-- 演出列表 -->
+			<!-- 演出列表（数据库） -->
 			<view v-show="currentTab === 0" class="tab-content">
-				<view v-for="(item, i) in performanceList" :key="i" class="perf-item" @click="goDetail(item.id)">
+				<view v-if="loading" class="schedule-tip">正在加载演出数据...</view>
+				<view v-else-if="!performanceList.length" class="schedule-tip">暂无在售演出</view>
+				<view v-for="item in performanceList" :key="item.id" class="perf-item" @click="goDetail(item.id)">
 					<view class="perf-item-main">
 						<text class="perf-item-title">{{ item.name }}</text>
 						<text class="perf-item-venue">{{ item.venue }}</text>
@@ -48,18 +50,26 @@
 </template>
 
 <script>
+import { getOnSalePerformances } from '../../api/performance.js'
+import { getNodeDetail } from '../../api/knowledgeGraph.js'
+
+function parseExtraData(raw) {
+	if (!raw) return {}
+	if (typeof raw === 'object') return raw
+	try {
+		return JSON.parse(raw)
+	} catch (e) {
+		return {}
+	}
+}
+
 export default {
 	data() {
 		return {
 			currentTab: 0,
 			tabs: ['演出列表', '排班表', 'SD信息', '优惠信息'],
-			performanceList: [
-				{ id: 1, name: '《哈姆雷特》', venue: '国家大剧院', time: '2024年3月1日 19:30', price: '¥180起' },
-				{ id: 2, name: '《天鹅湖》', venue: '北京舞蹈学院', time: '2024年3月2日 19:00', price: '¥280起' },
-				{ id: 3, name: '《茶花女》', venue: '中央歌剧院', time: '2024年3月3日 19:30', price: '¥380起' },
-				{ id: 4, name: '《罗密欧与朱丽叶》', venue: '北京人艺', time: '2024年3月5日 19:30', price: '¥220起' },
-				{ id: 5, name: '《歌剧魅影》', venue: '上海大剧院', time: '2024年3月8日 19:30', price: '¥320起' }
-			],
+			performanceList: [],
+			loading: false,
 			scheduleList: [
 				{ title: '国家大剧院 · 3月排班', theater: '国家大剧院', date: '2024-03-01 ~ 03-31' },
 				{ title: '北京人艺 · 3月排班', theater: '北京人艺', date: '2024-03-01 ~ 03-31' }
@@ -74,7 +84,56 @@ export default {
 			]
 		}
 	},
+	onLoad() {
+		this.loadPerformances()
+	},
 	methods: {
+		async loadPerformances() {
+			this.loading = true
+			try {
+				const res = await getOnSalePerformances()
+				const data = res.data || res
+				const rows = Array.isArray(data) ? data : []
+				const mapped = await Promise.all(rows.map(async (item) => {
+					let playName = '未命名剧目'
+					try {
+						const detailRes = await getNodeDetail(item.playId)
+						const detailData = detailRes.data || detailRes
+						const node = detailData && detailData.node
+						if (node && node.name) {
+							playName = `《${String(node.name).replace(/[《》]/g, '')}》`
+						}
+						const extra = parseExtraData(node && node.extraData)
+						if (!playName && extra && extra.title) {
+							playName = `《${String(extra.title).replace(/[《》]/g, '')}》`
+						}
+					} catch (e) {}
+
+					return {
+						id: item.id,
+						name: playName,
+						venue: item.venueName || '-',
+						time: this.formatDateTime(item.startTime),
+						price: this.formatPrice(item.minPrice, item.maxPrice)
+					}
+				}))
+				this.performanceList = mapped
+			} catch (e) {
+				this.performanceList = []
+			} finally {
+				this.loading = false
+			}
+		},
+		formatDateTime(value) {
+			if (!value) return '-'
+			return String(value).replace('T', ' ').slice(0, 16)
+		},
+		formatPrice(minPrice, maxPrice) {
+			if (minPrice == null && maxPrice == null) return '票价待定'
+			if (minPrice == null) return `最高¥${maxPrice}`
+			if (maxPrice == null || Number(minPrice) === Number(maxPrice)) return `¥${minPrice}起`
+			return `¥${minPrice}-¥${maxPrice}`
+		},
 		goDetail(id) {
 			uni.navigateTo({ url: `/pages/performance-detail/performance-detail?id=${id}` }).catch(() => {})
 		}

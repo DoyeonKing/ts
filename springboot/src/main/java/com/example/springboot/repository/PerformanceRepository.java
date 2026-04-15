@@ -15,13 +15,18 @@ public interface PerformanceRepository extends JpaRepository<Performance, Long> 
 
     List<Performance> findByPlayId(Long playId);
 
+    List<Performance> findByStatusOrderByStartTimeAsc(String status);
+
     boolean existsByPlayId(Long playId);
 
     @Query("""
         SELECT p FROM Performance p
         WHERE p.playId IN :playIds
           AND (:maxPrice IS NULL OR p.minPrice <= :maxPrice)
-          AND (:city IS NULL OR p.city = :city)
+          AND (
+                :city IS NULL
+                OR function('replace', p.city, '市', '') = function('replace', :city, '市', '')
+              )
           AND (:startTime IS NULL OR p.startTime >= :startTime)
           AND p.status = 'ON_SALE'
         ORDER BY p.startTime ASC, p.minPrice ASC

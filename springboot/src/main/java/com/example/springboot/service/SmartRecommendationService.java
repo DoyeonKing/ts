@@ -32,20 +32,23 @@ public class SmartRecommendationService {
     private final ActorLikeRepository actorLikeRepository;
     private final PerformanceRepository performanceRepository;
     private final VerticalFeatureService verticalFeatureService;
+    private final AiTextGenerationService aiTextGenerationService;
     private static final DateTimeFormatter DF = DateTimeFormatter.ofPattern("MM月dd日 HH:mm", Locale.CHINA);
+    private static final Set<String> GENRE_TAGS = Set.of("话剧", "音乐剧", "歌剧", "芭蕾", "舞剧", "儿童剧", "脱口秀");
 
     public Map<String, Object> buildPlan(String query, Long userId) {
         QueryIntent intent = parseIntent(query);
-        mergeVerticalFeatures(intent, verticalFeatureService.generateTextFeatures(query));
+        mergeVerticalFeatures(intent, verticalFeatureService.generateTextFeatures(query), query);
+        mergeVerticalFeatures(intent, aiTextGenerationService.generateRecommendationFeatures(query), query);
         RecallResult recall = recall(intent, userId);
         List<Map<String, Object>> plans = recall.candidates.stream().limit(5).map(this::toPlan).toList();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("query", query);
         result.put("intent", intent.toMap());
         result.put("plans", plans);
-        result.put("strategy", List.of("NLU条件解析", "垂直特征融合", "知识图谱与偏好多路召回", "预算/城市/时间硬过滤", "融合排序", "结构化推荐输出"));
+        result.put("strategy", List.of("NLU条件解析", "垂直标签与术语提取", "知识图谱与偏好多路召回", "预算/城市/时间硬过滤", "融合排序", "结构化推荐输出"));
         result.put("algorithmTrace", recall.toMap());
-        result.put("summary", plans.isEmpty() ? "当前没有满足约束的可售演出，建议放宽筛选条件后重试。" : "系统已生成 " + plans.size() + " 个推荐方案。");
+        result.put("summary", plans.isEmpty() ? "当前没有满足约束的可售演出，建议放宽筛选条件后重试。" : "系统已基于标签召回、术语关联和真实票务数据生成 " + plans.size() + " 个推荐方案。");
         return result;
     }
 
@@ -54,24 +57,50 @@ public class SmartRecommendationService {
         QueryIntent i = new QueryIntent();
         i.query = text;
         i.maxPrice = extractBudget(text);
-        i.city = text.contains("北京") ? "北京" : null;
+        i.city = detectCityFromText(text);
         i.weekendOnly = text.contains("周末");
         if (text.contains("话剧")) i.tags.add("话剧");
+        if (text.contains("音乐剧")) i.tags.add("音乐剧");
         if (text.contains("歌剧")) i.tags.add("歌剧");
         if (text.contains("芭蕾")) i.tags.add("芭蕾");
+        if (text.contains("舞剧")) i.tags.add("舞剧");
+        if (text.contains("儿童剧")) i.tags.add("儿童剧");
+        if (text.contains("脱口秀")) i.tags.add("脱口秀");
         if (text.contains("爱情") || text.contains("浪漫")) i.tags.add("爱情");
         if (text.contains("经典")) i.tags.add("经典");
+        if (text.contains("爆发力")) i.tags.add("演技爆发力强");
+        if (text.contains("张力")) i.tags.add("情绪张力强");
+        if (text.contains("台词")) i.tags.add("台词密度高");
+        if (text.contains("新手")) i.tags.add("新手友好");
+        if (text.contains("情侣")) i.tags.add("情侣适合");
+        if (text.contains("长辈")) i.tags.add("适合带长辈");
+        if (text.contains("烧脑")) i.tags.add("烧脑");
+        if (text.contains("催泪")) i.tags.add("催泪");
         if (text.contains("张力") || text.contains("爆发力") || text.contains("悲剧")) { i.tags.add("悲剧"); i.terms.add("独白"); }
+        if (text.contains("台词")) i.terms.add("台词节奏");
+        if (text.contains("爆发力")) i.terms.add("爆发戏");
         i.needActorFocus = text.contains("演员") || text.contains("演技");
         return i;
     }
 
-    private void mergeVerticalFeatures(QueryIntent i, Map<String, Object> f) {
+    private void mergeVerticalFeatures(QueryIntent i, Map<String, Object> f, String query) {
         i.actorTraits.addAll(toStringSet(f.get("actorTraits")));
         i.reviewKeywords.addAll(toStringSet(f.get("reviewKeywords")));
-        i.tags.addAll(toStringSet(f.get("softTags")));
+        i.tags.addAll(filterSoftTags(toStringSet(f.get("softTags")), query));
         if (!i.actorTraits.isEmpty()) i.needActorFocus = true;
         if (i.reviewKeywords.stream().anyMatch(v -> v.contains("台词") || v.contains("戏剧") || v.contains("冲突"))) i.terms.add("独白");
+    }
+
+    private Set<String> filterSoftTags(Set<String> tags, String query) {
+        LinkedHashSet<String> filtered = new LinkedHashSet<>();
+        String text = query == null ? "" : query;
+        for (String tag : tags) {
+            if ("经典".equals(tag) && !text.contains("经典")) {
+                continue;
+            }
+            filtered.add(tag);
+        }
+        return filtered;
     }
 
     private Set<String> toStringSet(Object value) {
@@ -87,6 +116,14 @@ public class SmartRecommendationService {
         return digits.isEmpty() ? null : new BigDecimal(digits.toString());
     }
 
+    private String detectCityFromText(String text) {
+        List<String> cities = List.of("北京", "上海", "广州", "深圳", "杭州", "南京", "成都", "武汉", "西安", "重庆", "天津", "苏州");
+        for (String city : cities) {
+            if (text.contains(city)) return city;
+        }
+        return null;
+    }
+
     private RecallResult recall(QueryIntent intent, Long userId) {
         Map<Long, CandidatePlay> map = new LinkedHashMap<>();
         int beforeTag = map.size(); collectByTag(intent.tags, map); int afterTag = map.size();
@@ -97,14 +134,52 @@ public class SmartRecommendationService {
         int beforeFilter = map.size();
         List<Performance> ps = performanceRepository.searchAvailablePerformances(new ArrayList<>(map.keySet()), intent.maxPrice, intent.city, intent.weekendOnly ? weekendStart() : null);
         Map<Long, Performance> best = ps.stream().collect(Collectors.toMap(Performance::getPlayId, p -> p, (a, b) -> a.getMinPrice().compareTo(b.getMinPrice()) <= 0 ? a : b, LinkedHashMap::new));
-        List<CandidatePlay> candidates = map.values().stream().peek(c -> c.performance = best.get(c.playId)).filter(c -> c.performance != null).peek(c -> score(c, intent)).sorted(Comparator.comparingDouble(CandidatePlay::total).reversed()).toList();
+        List<CandidatePlay> candidates = map.values().stream()
+                .peek(c -> c.performance = best.get(c.playId))
+                .filter(c -> c.performance != null)
+                .filter(c -> !hasStrongGenreDemand(intent) || matchesGenreDemand(c, intent.tags))
+                .peek(c -> score(c, intent))
+                .sorted(Comparator.comparingDouble(CandidatePlay::total).reversed())
+                .toList();
+        if (candidates.size() < 5) {
+            candidates = fillWithRelaxedCandidates(candidates, map, best, intent);
+        }
         RecallResult r = new RecallResult();
         r.candidates = candidates; r.tagRecallHits = Math.max(0, afterTag - beforeTag); r.termRecallHits = Math.max(0, afterTerm - beforeTerm); r.userRecallHits = Math.max(0, afterUser - beforeUser); r.candidateCountBeforeFilter = beforeFilter; r.availablePerformanceCount = best.size(); r.filteredOutCount = Math.max(0, beforeFilter - candidates.size());
         return r;
     }
 
+    private List<CandidatePlay> fillWithRelaxedCandidates(List<CandidatePlay> strictCandidates,
+                                                          Map<Long, CandidatePlay> map,
+                                                          Map<Long, Performance> best,
+                                                          QueryIntent intent) {
+        LinkedHashMap<Long, CandidatePlay> merged = new LinkedHashMap<>();
+        for (CandidatePlay candidate : strictCandidates) {
+            merged.put(candidate.playId, candidate);
+        }
+
+        if (merged.size() >= 5) {
+            return new ArrayList<>(merged.values()).subList(0, 5);
+        }
+
+        List<CandidatePlay> relaxed = map.values().stream()
+                .filter(c -> !merged.containsKey(c.playId))
+                .peek(c -> c.performance = best.get(c.playId))
+                .filter(c -> c.performance != null)
+                .peek(c -> score(c, intent))
+                .sorted(Comparator.comparingDouble(CandidatePlay::total).reversed())
+                .limit(5 - merged.size())
+                .toList();
+
+        for (CandidatePlay candidate : relaxed) {
+            candidate.reasons.add("补充推荐：在满足票务约束前提下扩展候选结果");
+            merged.put(candidate.playId, candidate);
+        }
+        return new ArrayList<>(merged.values());
+    }
+
     private void collectByTag(Set<String> tags, Map<Long, CandidatePlay> map) { collectByNodeNames(tags, NodeType.TAG, 3.5, "命中标签：", map); }
-    private void collectByTerm(Set<String> terms, Map<Long, CandidatePlay> map) { collectByNodeNames(terms, NodeType.TERMINOLOGY, 2.0, "相关术语：", map); }
+    private void collectByTerm(Set<String> terms, Map<Long, CandidatePlay> map) { collectByNodeNames(terms, NodeType.TERMINOLOGY, 2.2, "相关术语：", map); }
 
     private void collectByNodeNames(Set<String> names, NodeType type, double score, String reason, Map<Long, CandidatePlay> map) {
         for (String name : names) nodeRepository.findByNameAndNodeType(name, type).ifPresent(src -> {
@@ -144,6 +219,14 @@ public class SmartRecommendationService {
         if (i.weekendOnly) c.rule += 0.5;
         if (i.city != null && c.performance != null && i.city.equals(c.performance.getCity())) c.rule += 1.0;
         if (i.maxPrice != null && c.performance != null) c.rule += c.performance.getMinPrice().compareTo(i.maxPrice) <= 0 ? 1.2 : -1.5;
+        if (i.tags.contains("演技爆发力强") && containsReason(c, "演技爆发力强")) c.preference += 1.2;
+        if (i.tags.contains("情绪张力强") && containsReason(c, "情绪张力强")) c.preference += 1.0;
+        if (i.tags.contains("台词密度高") && (containsReason(c, "台词密度高") || containsReason(c, "台词节奏"))) c.preference += 0.8;
+        if (i.tags.contains("新手友好") && containsReason(c, "新手友好")) c.rule += 0.8;
+        if (i.tags.contains("情侣适合") && containsReason(c, "情侣适合")) c.rule += 0.6;
+        if (i.tags.contains("适合带长辈") && containsReason(c, "适合带长辈")) c.rule += 0.6;
+        if (i.tags.contains("烧脑") && containsReason(c, "烧脑")) c.preference += 0.7;
+        if (i.tags.contains("催泪") && containsReason(c, "催泪")) c.preference += 0.7;
         c.popularity += Math.min(2.5, c.reasons.size() * 0.4);
     }
 
@@ -153,9 +236,48 @@ public class SmartRecommendationService {
         m.put("playId", c.playId); m.put("playName", c.playName); m.put("matchScore", String.format(Locale.CHINA, "%.1f", c.total() * 10)); m.put("description", c.description);
         m.put("venue", p != null ? p.getVenueName() : "待定"); m.put("city", p != null ? p.getCity() : "待定"); m.put("showTime", p != null ? p.getStartTime().format(DF) : "待定"); m.put("priceRange", p != null ? "¥" + p.getMinPrice() + "-" + p.getMaxPrice() : "待定");
         m.put("reason", c.reasons.isEmpty() ? "综合偏好推荐" : String.join("；", c.reasons.stream().distinct().limit(4).toList()));
-        m.put("analysis", "图谱关联、用户偏好、口碑和规则约束综合排序后得出，适合希望快速锁定可售场次的用户。");
+        m.put("analysis", buildAnalysis(c));
         m.put("scoreBreakdown", Map.of("graphScore", round1(c.graph), "preferenceScore", round1(c.preference), "ratingScore", round1(c.ratingScore), "popularityScore", round1(c.popularity), "ruleScore", round1(c.rule)));
         return m;
+    }
+
+    private boolean containsReason(CandidatePlay c, String keyword) {
+        return c.reasons.stream().anyMatch(reason -> reason != null && reason.contains(keyword));
+    }
+
+    private String buildAnalysis(CandidatePlay c) {
+        List<String> parts = new ArrayList<>();
+        if (c.reasons.stream().anyMatch(v -> v.startsWith("命中标签："))) parts.add("命中了用户偏好的垂直标签");
+        if (c.reasons.stream().anyMatch(v -> v.startsWith("相关术语："))) parts.add("在戏剧术语和表演维度上相关");
+        if (c.performance != null) parts.add("存在可售场次且票务信息可核验");
+        if (c.ratingScore > 0) parts.add("结合了历史评分信号");
+        if (parts.isEmpty()) parts.add("综合知识图谱、偏好和规则约束排序得到");
+        return String.join("，", parts) + "。";
+    }
+
+    private boolean hasStrongGenreDemand(QueryIntent intent) {
+        return intent.tags.stream().anyMatch(GENRE_TAGS::contains);
+    }
+
+    private boolean matchesGenreDemand(CandidatePlay candidate, Set<String> requestedTags) {
+        Set<String> requestedGenres = requestedTags.stream().filter(GENRE_TAGS::contains).collect(Collectors.toSet());
+        if (requestedGenres.isEmpty()) return true;
+
+        Set<String> playGenres = inferGenresFromPlay(candidate.playName, candidate.description, candidate.reasons);
+        return playGenres.stream().anyMatch(requestedGenres::contains);
+    }
+
+    private Set<String> inferGenresFromPlay(String playName, String description, List<String> reasons) {
+        String text = String.join(" ",
+                playName == null ? "" : playName,
+                description == null ? "" : description,
+                reasons == null ? "" : String.join(" ", reasons)
+        );
+        Set<String> genres = new LinkedHashSet<>();
+        for (String genre : GENRE_TAGS) {
+            if (text.contains(genre)) genres.add(genre);
+        }
+        return genres;
     }
 
     private LocalDateTime weekendStart() {

@@ -2,7 +2,9 @@ package com.example.springboot.controller;
 
 import com.example.springboot.common.Result;
 import com.example.springboot.service.AiPipelineService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;
@@ -29,10 +31,43 @@ public class AiChatController {
         return Result.success(aiPipelineService.generateVerticalText(request.getQuery()));
     }
 
+    @PostMapping("/creative")
+    public Result creative(@Valid @RequestBody CreativeRequest request) {
+        return Result.success(aiPipelineService.generateCreative(request.getType(), request.getPlayId(), request.getStyle()));
+    }
+
+    @PostMapping("/creative-prompt")
+    public Result creativePrompt(@Valid @RequestBody CreativeRequest request) {
+        return Result.success(aiPipelineService.generateCreativePrompt(request.getType(), request.getPlayId(), request.getStyle()));
+    }
+
+    @PostMapping("/creative-image")
+    public Result creativeImage(@RequestBody CreativeImageRequest request) {
+        return Result.success(aiPipelineService.generateCreativeImage(
+                request == null ? null : request.getPrompt(),
+                request == null ? null : request.getType()
+        ));
+    }
+
     @Data
     public static class ChatRequest {
         @NotBlank(message = "query 不能为空")
         private String query;
         private Long userId;
+    }
+
+    @Data
+    public static class CreativeRequest {
+        @NotBlank(message = "type 不能为空")
+        @Pattern(regexp = "poster|merch", message = "type 须为 poster 或 merch")
+        private String type;
+        private Long playId;
+        private String style;
+    }
+
+    @Data
+    public static class CreativeImageRequest {
+        private String prompt;
+        private String type;
     }
 }

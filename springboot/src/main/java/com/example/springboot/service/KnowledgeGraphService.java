@@ -19,10 +19,11 @@ public class KnowledgeGraphService {
     private final KnowledgeNodeRepository nodeRepository;
     private final KnowledgeEdgeRepository edgeRepository;
 
+    private static final String EMPTY_JSON_OBJECT = "{}";
+
     private void ensureSeedDataInitialized() {
-        if (nodeRepository.count() == 0) {
-            initSeedData();
-        }
+        // 严格数据库模式：不再自动初始化或自动补数据
+        // 数据由数据库现有内容与显式初始化接口控制
     }
 
     /**
@@ -142,6 +143,53 @@ public class KnowledgeGraphService {
         result.put("nodes", nodeList);
         result.put("edges", edgeList);
         return result;
+    }
+
+    @Transactional
+    public void enrichExperienceTags() {
+        KnowledgeNode tagWeekend = createOrUpdateTag("周末友好", "周末排期稳定、时间友好，适合周末观演");
+        KnowledgeNode tagBrain = createOrUpdateTag("烧脑", "剧情信息量大、结构复杂，适合喜欢推理和思辨的观众");
+        KnowledgeNode tagRewatch = createOrUpdateTag("适合二刷", "细节丰富、复看仍有新发现，二刷体验更佳");
+
+        KnowledgeNode hamlet = nodeRepository.findByNameAndNodeType("哈姆雷特", NodeType.PLAY).orElse(null);
+        KnowledgeNode lear = nodeRepository.findByNameAndNodeType("李尔王", NodeType.PLAY).orElse(null);
+        KnowledgeNode teahouse = nodeRepository.findByNameAndNodeType("茶馆", NodeType.PLAY).orElse(null);
+        KnowledgeNode romeo = nodeRepository.findByNameAndNodeType("罗密欧与朱丽叶", NodeType.PLAY).orElse(null);
+        KnowledgeNode swan = nodeRepository.findByNameAndNodeType("天鹅湖", NodeType.PLAY).orElse(null);
+        KnowledgeNode camellia = nodeRepository.findByNameAndNodeType("茶花女", NodeType.PLAY).orElse(null);
+
+        linkIfMissing(hamlet, tagBrain, "HAS_TAG", "高信息密度");
+        linkIfMissing(lear, tagBrain, "HAS_TAG", "结构复杂");
+        linkIfMissing(teahouse, tagRewatch, "HAS_TAG", "人物层次丰富");
+        linkIfMissing(hamlet, tagRewatch, "HAS_TAG", "经典台词细节多");
+
+        linkIfMissing(romeo, tagWeekend, "HAS_TAG", "周末热门场");
+        linkIfMissing(swan, tagWeekend, "HAS_TAG", "周末观演友好");
+        linkIfMissing(camellia, tagWeekend, "HAS_TAG", "周末场次稳定");
+    }
+
+    private KnowledgeNode createOrUpdateTag(String name, String description) {
+        KnowledgeNode node = nodeRepository.findByNameAndNodeType(name, NodeType.TAG)
+                .orElseGet(() -> createNode(name, NodeType.TAG, description, EMPTY_JSON_OBJECT));
+        boolean changed = false;
+        if (node.getDescription() == null || node.getDescription().isBlank()) {
+            node.setDescription(description);
+            changed = true;
+        }
+        if (node.getExtraData() == null || node.getExtraData().isBlank()) {
+            node.setExtraData(EMPTY_JSON_OBJECT);
+            changed = true;
+        }
+        return changed ? nodeRepository.save(node) : node;
+    }
+
+    private void linkIfMissing(KnowledgeNode source, KnowledgeNode target, String relationType, String label) {
+        if (source == null || target == null) return;
+        if (edgeRepository.existsBySourceNodeIdAndTargetNodeIdAndRelationType(source.getId(), target.getId(), relationType)
+                || edgeRepository.existsBySourceNodeIdAndTargetNodeIdAndRelationType(target.getId(), source.getId(), relationType)) {
+            return;
+        }
+        createEdge(source, target, relationType, label);
     }
 
     // ========== 初始化种子数据 ==========

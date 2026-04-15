@@ -13,6 +13,8 @@ public interface KnowledgeEdgeRepository extends JpaRepository<KnowledgeEdge, Lo
 
     List<KnowledgeEdge> findBySourceNodeIdOrTargetNodeId(Long sourceId, Long targetId);
 
+    boolean existsBySourceNodeIdAndTargetNodeIdAndRelationType(Long sourceNodeId, Long targetNodeId, String relationType);
+
     @Query("""
         SELECT e FROM KnowledgeEdge e
         WHERE e.sourceNodeId IN :nodeIds AND e.targetNodeId IN :nodeIds

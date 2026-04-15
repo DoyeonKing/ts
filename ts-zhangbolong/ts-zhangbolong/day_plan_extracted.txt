@@ -1,0 +1,44 @@
+天数
+核心目标
+具体任务 (Vibecoding 侧重点)
+产出成果
+Day 1
+API 初探与文字生成
+使用 Cursor 快速搭建 AIGenerationController，对接豆包/文心大模型，写死测试数据，跑通观后感/剧情分析/演员评价的生成逻辑。
+/api/ai/generate-text 接口可用
+Day 2
+文创图片生成
+扩展上述模块，对接支持 AI 画图的 API（豆包图像/文心一格），通过 Prompt 控制生成海报、周边设计的图片 URL。
+/api/ai/creative 接口可用
+Day 3
+构建 Mock 数据源
+让 Cursor 用 Java 生成 20 个剧目和 50 条用户打分记录（写在内存 List 里），作为后续算法的“燃料”。
+测试用假数据集 (Java 类)
+Day 4
+传统推荐算法 MVP
+把假数据丢给 Cursor，让它帮你写一个基于物品的协同过滤算法 (Item-CF) 或者简单的多权重打分排序算法。
+/api/ai/recommend 基础版
+Day 5
+AI 助手对话 (基础版)
+搭建 AIChatController，将大模型 API 封装成对话接口。初步调试 System Prompt，让 AI 扮演“剧场助手”。
+/api/ai/chat 基础联通
+Day 6
+多方案生成 Prompt 调优
+（核心难点） 反复测试 Prompt，要求 AI 必须根据用户意图返回包含“剧目、场次、美食、交通”的 3-5 个结构化方案（JSON 格式）。
+稳定输出多方案 JSON
+Day 7
+流式输出 (SSE) 改造
+让 Cursor 将对话接口改造为 Server-Sent Events (SSE) 流式响应，为了前端能实现“打字机”效果。
+流式对话接口
+Day 8
+本地极简网页联调
+让 Cursor 写一个单文件 HTML（包含聊天框和假推荐列表），你自己先用浏览器测试你写的所有后端接口，不依赖前端队友。
+本地独立测试沙盒
+Day 9
+后端框架融合
+将你独立写好的 Service 和 Controller 代码，优雅地合并到队友 C 搭建的正式 Spring Boot 框架中。
+代码合并提交
+Day 10
+冗余时间 / 进阶 RAG
+处理联调 Bug。如果进度极快，可以让 Cursor 教你引入 Spring AI 实现基础的 RAG（向量检索）。
+达到“大创”亮点标准

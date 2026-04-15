@@ -32,6 +32,10 @@
 				<view class="primary-btn" @click="submitQuery">开始智能推荐</view>
 			</view>
 		</view>
+		<view class="action-row secondary-actions">
+			<view class="ghost-btn" @tap="submitAdvancedQuery">查看 LLM 推荐方案</view>
+			<view class="ghost-btn" @tap="goCreativePage">AI 文创生成</view>
+		</view>
 
 		<view class="result-card" v-if="loading">
 			<text class="loading-title">算法链路执行中</text>
@@ -43,7 +47,20 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.intent">
+		<view class="result-card" v-if="submitted && (result.plans || []).length">
+			<view class="result-head compact">
+				<text class="result-title">融合排序分解</text>
+				<text class="result-subtitle">先展示最核心的排序得分，再看具体推荐结果</text>
+			</view>
+			<view class="breakdown-grid top-breakdown" v-if="result.plans[0] && result.plans[0].scoreBreakdown">
+				<view class="break-item" v-for="(value, key) in result.plans[0].scoreBreakdown" :key="key">
+					<text class="break-key">{{ formatScoreKey(key) }}</text>
+					<text class="break-value">{{ value }}</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="result-card" v-if="submitted && result.intent">
 			<view class="result-head">
 				<text class="result-title">解析结果</text>
 				<text class="result-subtitle">系统已将自然语言拆解为可执行约束</text>
@@ -80,7 +97,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.verticalFeatures">
+		<view class="result-card" v-if="submitted && result.verticalFeatures">
 			<view class="result-head compact">
 				<text class="result-title">垂直特征生成</text>
 				<text class="result-subtitle">本地垂直引擎输出戏剧语义特征与专业赏析</text>
@@ -118,7 +135,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.retrievalSummary">
+		<view class="result-card" v-if="submitted && result.retrievalSummary">
 			<view class="result-head compact">
 				<text class="result-title">多路召回摘要</text>
 				<text class="result-subtitle">知识图谱、偏好数据与票务约束共同参与排序</text>
@@ -143,7 +160,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.algorithmMetrics">
+		<view class="result-card" v-if="submitted && result.algorithmMetrics">
 			<view class="result-head compact">
 				<text class="result-title">算法指标</text>
 				<text class="result-subtitle">用于展示当前请求在意图识别、特征生成与事实约束上的完成度</text>
@@ -172,7 +189,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.algorithmTrace">
+		<view class="result-card" v-if="submitted && result.algorithmTrace">
 			<view class="result-head compact">
 				<text class="result-title">算法追踪 Trace</text>
 				<text class="result-subtitle">展示候选召回、场次过滤与最终保留数量，突出推荐过程的可解释性</text>
@@ -209,7 +226,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="(result.strategy || []).length">
+		<view class="result-card" v-if="submitted && (result.strategy || []).length">
 			<view class="result-head compact">
 				<text class="result-title">算法链路</text>
 				<text class="result-subtitle">当前演示版本使用的推荐流程</text>
@@ -222,7 +239,7 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="result.ragContext">
+		<view class="result-card" v-if="submitted && result.ragContext">
 			<view class="result-head compact">
 				<text class="result-title">RAG 上下文拼装</text>
 				<text class="result-subtitle">将真实票务事实与垂直评论特征融合为受约束上下文</text>
@@ -247,66 +264,95 @@
 			</view>
 		</view>
 
-		<view class="result-card" v-if="(result.plans || []).length">
+		<view class="result-card" v-if="submitted && displayPlans.length">
 			<view class="result-head compact">
 				<text class="result-title">推荐方案</text>
-				<text class="result-subtitle">候选结果经过融合排序后输出 Top {{ result.plans.length }}</text>
+				<text class="result-subtitle">默认直接展示多条可选方案，方便横向比较场次、票价与推荐依据</text>
+			</view>
+			<view class="result-overview-grid">
+				<view class="break-item">
+					<text class="break-key">首位推荐</text>
+					<text class="break-value">{{ displayPlans[0] ? displayPlans[0].playName : '—' }}</text>
+				</view>
+				<view class="break-item">
+					<text class="break-key">当前展示</text>
+					<text class="break-value">{{ visiblePlans.length }} / {{ displayPlans.length }} 个方案</text>
+				</view>
+				<view class="break-item" v-if="candidatePlanCount">
+					<text class="break-key">候选池规模</text>
+					<text class="break-value">{{ candidatePlanCount }} 个候选</text>
+				</view>
+				<view class="break-item" v-if="result.retrievalSummary && result.retrievalSummary.retrievalMode">
+					<text class="break-key">召回方式</text>
+					<text class="break-value">{{ result.retrievalSummary.retrievalMode }}</text>
+				</view>
 			</view>
 			<view class="plan-list">
-				<view class="plan-item" v-for="(plan, index) in result.plans" :key="index">
+				<view class="plan-item" v-for="(plan, index) in visiblePlans" :key="getPlanKey(plan, index)">
 					<view class="plan-top">
 						<view>
-							<text class="plan-rank">方案 {{ index + 1 }}</text>
+							<text class="plan-rank">{{ getPlanOrder(plan, index) === 0 ? '主推荐' : '备选 ' + getPlanOrder(plan, index) }}</text>
 							<text class="plan-name">{{ plan.playName }}</text>
 						</view>
-						<view class="score-pill">匹配分 {{ plan.matchScore }}</view>
+						<view class="score-pill">匹配分 {{ plan.matchScore || '—' }}</view>
 					</view>
-					<text class="plan-desc">{{ plan.description }}</text>
+					<text class="plan-desc">{{ plan.description || '该方案与当前需求有较高匹配度，可继续查看推荐依据。' }}</text>
 					<view class="meta-grid">
 						<view class="meta-item">
 							<text class="meta-label">场馆</text>
-							<text class="meta-value">{{ plan.venue }}</text>
+							<text class="meta-value">{{ plan.venue || '待确认' }}</text>
 						</view>
 						<view class="meta-item">
 							<text class="meta-label">时间</text>
-							<text class="meta-value">{{ plan.showTime }}</text>
+							<text class="meta-value">{{ plan.showTime || '待确认' }}</text>
 						</view>
 						<view class="meta-item">
 							<text class="meta-label">票价</text>
-							<text class="meta-value highlight">{{ plan.priceRange }}</text>
+							<text class="meta-value highlight">{{ plan.priceRange || '待确认' }}</text>
 						</view>
 						<view class="meta-item">
 							<text class="meta-label">城市</text>
-							<text class="meta-value">{{ plan.city }}</text>
+							<text class="meta-value">{{ plan.city || '待确认' }}</text>
 						</view>
 					</view>
 					<view class="reason-box">
-						<text class="reason-title">推荐理由</text>
-						<text class="reason-text">{{ plan.reason }}</text>
+						<text class="reason-title">推荐依据摘要</text>
+						<text class="reason-text">{{ buildPlanReasonSummary(plan, getPlanOrder(plan, index)) }}</text>
 					</view>
-					<view class="analysis-box">
+					<view class="analysis-box" v-if="plan.scoreBreakdown">
+						<text class="analysis-title">分项得分</text>
+						<view class="score-tag-row">
+							<view class="score-tag" v-for="(value, key) in plan.scoreBreakdown" :key="key">
+								<text class="score-tag-key">{{ formatScoreKey(key) }}</text>
+								<text class="score-tag-value">{{ value }}</text>
+							</view>
+						</view>
+					</view>
+					<view class="analysis-toggle-row" v-if="plan.reason || plan.analysis || plan.description">
+						<text class="analysis-toggle-btn" @tap="togglePlanExpand(plan, index)">{{ isPlanExpanded(plan, index) ? '收起分析依据' : '展开分析依据' }}</text>
+					</view>
+					<view class="analysis-box" v-if="(plan.reason || plan.analysis || plan.description) && isPlanExpanded(plan, index)">
 						<text class="analysis-title">方案分析</text>
-						<text class="analysis-text">{{ plan.analysis }}</text>
-					</view>
-					<view class="breakdown-box" v-if="plan.scoreBreakdown">
-						<text class="breakdown-title">融合排序分解</text>
-						<view class="breakdown-grid">
-							<view class="break-item" v-for="(value, key) in plan.scoreBreakdown" :key="key">
-								<text class="break-key">{{ formatScoreKey(key) }}</text>
-								<text class="break-value">{{ value }}</text>
+						<view class="bullet-list">
+							<view class="bullet-item" v-for="(item, itemIndex) in getPlanHighlights(plan)" :key="itemIndex">
+								<text class="bullet-dot"></text>
+								<text class="bullet-text">{{ item }}</text>
 							</view>
 						</view>
 					</view>
 				</view>
 			</view>
+			<view class="more-row" v-if="hasMorePlans">
+				<view class="ghost-btn mini" @tap="togglePlanList">{{ showAllPlans ? '收起更多方案' : '展开更多方案（+' + (displayPlans.length - defaultVisiblePlanCount) + '）' }}</view>
+			</view>
 		</view>
 
-		<view class="result-card empty" v-if="!loading && submitted && !(result.plans || []).length">
+		<view class="result-card empty" v-if="!loading && submitted && !displayPlans.length">
 			<text class="empty-title">暂无满足条件的演出</text>
 			<text class="empty-desc">可以尝试放宽预算、取消周末限制，或改用“经典 / 爱情 / 话剧”等关键词重新提问。</text>
 		</view>
 
-		<view class="result-card" v-if="result.summary">
+		<view class="result-card" v-if="submitted && result.summary">
 			<text class="summary-title">系统总结</text>
 			<text class="summary-text">{{ result.summary }}</text>
 		</view>
@@ -314,7 +360,7 @@
 </template>
 
 <script>
-import { chatWithAI } from '../../api/ai.js'
+import { chatWithAI, getAdvancedRecommendationPlan } from '../../api/ai.js'
 
 export default {
 	data() {
@@ -335,7 +381,54 @@ export default {
 				'触发知识图谱与偏好多路召回',
 				'执行预算 / 城市 / 时间过滤',
 				'完成 RAG 上下文拼装与结构化输出'
-			]
+			],
+			defaultVisiblePlanCount: 5,
+			showAllPlans: false,
+			expandedPlanKeys: {}
+		}
+	},
+	computed: {
+		displayPlans() {
+			const plans = Array.isArray(this.result.plans) ? this.result.plans : []
+			const facts = this.result.ragContext && Array.isArray(this.result.ragContext.candidateFacts)
+				? this.result.ragContext.candidateFacts
+				: []
+			const merged = [...plans]
+			facts.forEach(fact => {
+				if (!fact || !fact.playName) {
+					return
+				}
+				const exists = merged.some(item => item && item.playName === fact.playName)
+				if (!exists) {
+					merged.push({
+						playName: fact.playName,
+						description: fact.reason || fact.analysis || '来自候选池的补充推荐方案，可作为备选继续比较。',
+						venue: fact.venue,
+						showTime: fact.showTime,
+						priceRange: fact.priceRange,
+						city: fact.city,
+						reason: fact.reason,
+						analysis: fact.analysis,
+						matchScore: '候选'
+					})
+				}
+			})
+			return merged.slice(0, 5)
+		},
+		candidatePlanCount() {
+			if (this.result.retrievalSummary && this.result.retrievalSummary.finalPlanCount) {
+				return this.result.retrievalSummary.finalPlanCount
+			}
+			return this.displayPlans.length
+		},
+		hasMorePlans() {
+			return this.displayPlans.length > this.defaultVisiblePlanCount
+		},
+		visiblePlans() {
+			if (this.showAllPlans) {
+				return this.displayPlans
+			}
+			return this.displayPlans.slice(0, this.defaultVisiblePlanCount)
 		}
 	},
 	methods: {
@@ -367,6 +460,55 @@ export default {
 			}
 			return value
 		},
+		getPlanOrder(plan, index) {
+			const matchedIndex = this.displayPlans.findIndex(item => item && plan && item.playName === plan.playName)
+			return matchedIndex >= 0 ? matchedIndex : index
+		},
+		getPlanKey(plan, index) {
+			const order = this.getPlanOrder(plan, index)
+			return (plan && plan.playName ? plan.playName : 'plan') + '-' + order
+		},
+		togglePlanList() {
+			this.showAllPlans = !this.showAllPlans
+		},
+		togglePlanExpand(plan, index) {
+			const key = this.getPlanKey(plan, index)
+			this.$set(this.expandedPlanKeys, key, !this.expandedPlanKeys[key])
+		},
+		isPlanExpanded(plan, index) {
+			const key = this.getPlanKey(plan, index)
+			if (this.expandedPlanKeys[key] !== undefined) {
+				return !!this.expandedPlanKeys[key]
+			}
+			return this.getPlanOrder(plan, index) === 0
+		},
+		getPlanHighlights(plan) {
+			const rawList = [plan.reason, plan.analysis, plan.description]
+			const list = rawList
+				.filter(Boolean)
+				.map(item => String(item).trim())
+				.filter((item, index, arr) => arr.indexOf(item) === index)
+			return list.length ? list.slice(0, 3) : ['该方案与当前约束整体匹配，可作为进一步决策候选。']
+		},
+		buildPlanReasonSummary(plan, index) {
+			const summary = []
+			if (index === 0) {
+				summary.push('综合匹配度位于当前结果首位')
+			}
+			if (plan.city) {
+				summary.push('覆盖城市：' + plan.city)
+			}
+			if (plan.priceRange) {
+				summary.push('价格区间：' + plan.priceRange)
+			}
+			if (plan.showTime) {
+				summary.push('可选场次：' + plan.showTime)
+			}
+			if (plan.reason) {
+				summary.push(plan.reason)
+			}
+			return summary.slice(0, 4).join('；') || '系统基于你的预算、时间与剧目偏好生成了该推荐。'
+		},
 		async submitQuery() {
 			if (!this.query.trim()) {
 				uni.showToast({ title: '请输入推荐需求', icon: 'none' })
@@ -383,10 +525,30 @@ export default {
 			} finally {
 				this.loading = false
 			}
+		},
+		async submitAdvancedQuery() {
+			if (!this.query.trim()) {
+				uni.showToast({ title: '请输入 LLM 推荐需求', icon: 'none' })
+				return
+			}
+			this.loading = true
+			this.submitted = true
+			try {
+				const res = await getAdvancedRecommendationPlan({ query: this.query.trim(), userId: 1 })
+				this.result = res.data || {}
+			} catch (error) {
+				this.result = {}
+				uni.showToast({ title: 'LLM 推荐服务暂不可用', icon: 'none' })
+			} finally {
+				this.loading = false
+			}
+		},
+		goCreativePage() {
+			const q = encodeURIComponent(this.query || '')
+			uni.navigateTo({ url: `/pages/ai-creative/ai-creative?query=${q}` }).catch(() => {})
 		}
 	},
 	onLoad() {
-		this.submitQuery()
 	}
 }
 </script>
@@ -490,6 +652,9 @@ export default {
 	gap: 16rpx;
 	margin-top: 24rpx;
 }
+.secondary-actions {
+	margin-top: 16rpx;
+}
 .ghost-btn,
 .primary-btn {
 	flex: 1;
@@ -508,6 +673,12 @@ export default {
 	color: #1f1227;
 	background: linear-gradient(135deg, #facc15 0%, #fb7185 52%, #c084fc 100%);
 }
+.result-overview-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16rpx;
+	margin-top: 18rpx;
+}
 .loading-steps,
 .strategy-list,
 .plan-list,
@@ -516,6 +687,9 @@ export default {
 	display: flex;
 	flex-direction: column;
 	gap: 16rpx;
+}
+.top-breakdown {
+	margin-top: 18rpx;
 }
 .loading-item,
 .strategy-item,
@@ -688,6 +862,50 @@ export default {
 .summary-text,
 .fact-reason {
 	line-height: 1.7;
+}
+.analysis-toggle-row {
+	margin-top: 14rpx;
+}
+.analysis-toggle-btn {
+	display: inline-block;
+	padding: 10rpx 16rpx;
+	border-radius: 999rpx;
+	font-size: 22rpx;
+	color: #f5d0fe;
+	background: rgba(217, 70, 239, 0.1);
+	border: 1rpx solid rgba(217, 70, 239, 0.2);
+}
+.more-row {
+	margin-top: 18rpx;
+}
+.ghost-btn.mini {
+	width: 100%;
+	padding: 18rpx 0;
+	font-size: 24rpx;
+}
+.score-tag-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12rpx;
+	margin-top: 12rpx;
+}
+.score-tag {
+	min-width: 140rpx;
+	padding: 14rpx 16rpx;
+	border-radius: 16rpx;
+	background: rgba(39, 25, 46, 0.86);
+	border: 1rpx solid rgba(250, 204, 21, 0.12);
+}
+.score-tag-key {
+	display: block;
+	font-size: 20rpx;
+	color: #c4b5fd;
+	margin-bottom: 8rpx;
+}
+.score-tag-value {
+	font-size: 24rpx;
+	color: #fff7ed;
+	font-weight: 700;
 }
 .bullet-list {
 	display: flex;

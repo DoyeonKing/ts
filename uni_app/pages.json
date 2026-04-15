@@ -49,6 +49,10 @@
 			"style": { "navigationBarTitleText": "AI智能推荐" }
 		},
 		{
+			"path": "pages/ai-creative/ai-creative",
+			"style": { "navigationBarTitleText": "AI文创生成" }
+		},
+		{
 			"path": "pages/performance-detail/performance-detail",
 			"style": { "navigationBarTitleText": "演出详情" }
 		},
@@ -95,6 +99,10 @@
 		{
 			"path": "pages/qa/qa",
 			"style": { "navigationBarTitleText": "智能问答" }
+		},
+		{
+			"path": "pages/node-detail/node-detail",
+			"style": { "navigationBarTitleText": "节点详情", "navigationBarBackgroundColor": "#FFFFFF", "navigationBarTextStyle": "black" }
 		}
 	],
 	"tabBar": {
