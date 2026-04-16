@@ -10,7 +10,14 @@
 					<view class="toolbar-badge">3D旋转 · 点击聚焦</view>
 				</view>
 				<view class="filter-row">
-					<view v-for="t in typeFilters" :key="t.key" class="filter-btn" :style="pillStyle(t)" @tap="toggleType(t.key)">{{ t.label }}</view>
+					<view
+					v-for="t in typeFilters"
+					:key="t.key"
+					class="filter-btn"
+					:class="{ active: activeTypes.includes(t.key) }"
+					:style="{ '--pill-color': t.color }"
+					@tap="toggleType(t.key)"
+				>{{ t.label }}</view>
 				</view>
 				<view class="search-row">
 					<input class="search-input" v-model="searchKey" placeholder="搜索节点、人物、术语..." placeholder-style="color: rgba(255,240,228,.35);" @confirm="onSearch" />
@@ -112,14 +119,6 @@ export default {
 		},
 		getColor(t) { return TYPE_COLORS[t] || '#999' },
 		getTypeLabel(t) { return TYPE_LABELS[t] || t },
-		pillStyle(t) {
-			const active = this.activeTypes.includes(t.key)
-			return {
-				borderColor: active ? t.color : 'rgba(255,255,255,.14)',
-				color: active ? '#fff7eb' : 'rgba(255,240,228,.72)',
-				background: active ? t.color : 'rgba(255,255,255,.04)'
-			}
-		},
 		async loadData() {
 			this.loading = true
 			try {
@@ -362,7 +361,8 @@ export default {
 .toolbar-title{display:block;font-size:34rpx;font-weight:700;color:#fff4e8}
 .toolbar-badge{padding:10rpx 18rpx;border-radius:999rpx;background:rgba(255,255,255,.06);border:1rpx solid rgba(255,255,255,.08);font-size:22rpx;color:rgba(255,240,228,.82)}
 .filter-row{display:flex;gap:12rpx;flex-wrap:wrap;margin-bottom:14rpx}
-.filter-btn{font-size:22rpx;padding:8rpx 18rpx;border-radius:999rpx;border:2rpx solid rgba(255,255,255,.12)}
+.filter-btn{font-size:22rpx;padding:8rpx 18rpx;border-radius:999rpx;border:2rpx solid rgba(255,255,255,.12);border-color:rgba(255,255,255,.14);color:rgba(255,240,228,.72);background:rgba(255,255,255,.04)}
+.filter-btn.active{border-color:var(--pill-color);color:#fff7eb;background:var(--pill-color)}
 .search-row{display:flex;gap:12rpx;align-items:center}
 .search-input{flex:1;height:60rpx;background:rgba(255,255,255,.06);border:1rpx solid rgba(255,255,255,.08);border-radius:30rpx;padding:0 24rpx;font-size:26rpx;color:#fff3ea}
 .search-btn{min-width:110rpx;height:60rpx;line-height:60rpx;text-align:center;background:linear-gradient(135deg,#f2c94c,#c17f39);color:#43111a;border-radius:30rpx;font-size:26rpx;font-weight:700;box-shadow:0 10rpx 22rpx rgba(193,127,57,.24)}

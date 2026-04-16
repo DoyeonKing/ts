@@ -151,94 +151,66 @@ public class AdvancedTheaterRecommendationService {
         intent.setCity(detectCity(text));
         intent.setWeekendOnly(containsAny(text, List.of("周末", "周六", "周日")));
         intent.setNeedActorFocus(containsAny(text, List.of("演员", "演技", "卡司")));
+        intent.setSummary("本地规则解析");
 
-        int graphTagHits = matchGraphNodes(text, NodeType.TAG, intent.getTags());
-        int graphTermHits = matchGraphNodes(text, NodeType.TERMINOLOGY, intent.getTerms());
-        int aliasTagHits = matchAliasDictionary(text, TAG_KEYWORDS, intent.getTags());
-        int aliasTermHits = matchAliasDictionary(text, TERM_KEYWORDS, intent.getTerms());
+        matchDictionary(text, TAG_KEYWORDS, intent.getTags());
+        matchDictionary(text, TERM_KEYWORDS, intent.getTerms());
 
         if (text.contains("爱情剧")) {
-            intent.getInferredTags().add("爱情");
             intent.getTags().add("爱情");
             if (!containsAny(text, List.of("话剧", "音乐剧"))) {
-                intent.getInferredTags().add("话剧");
                 intent.getTags().add("话剧");
             }
         }
         if (containsAny(text, List.of("适合约会", "约会看", "情侣看"))) {
-            intent.getInferredTags().add("情侣适合");
-            intent.getInferredTags().add("爱情");
             intent.getTags().add("情侣适合");
             intent.getTags().add("爱情");
         }
         if (containsAny(text, List.of("好哭", "虐一点", "虐", "催泪"))) {
-            intent.getInferredTags().add("催泪");
             intent.getTags().add("催泪");
         }
         if (text.contains("悬疑")) {
-            intent.getInferredTags().add("烧脑");
             intent.getTags().add("烧脑");
         }
-
         intent.getInferredTags().addAll(intent.getTags());
         intent.getInferredTerms().addAll(intent.getTerms());
-        intent.setSummary(String.format(Locale.CHINA,
-                "本地解析：真实图谱匹配标签 %d 个、术语 %d 个，别名补充标签 %d 个、术语 %d 个",
-                graphTagHits, graphTermHits, aliasTagHits, aliasTermHits));
         return intent;
     }
 
-    private int matchGraphNodes(String text, NodeType nodeType, Set<String> sink) {
-        if (!StringUtils.hasText(text)) {
-            return 0;
+    private QueryIntent mergeIntent(String query, QueryIntent externalIntent) {
+        QueryIntent base = parseIntent(query);
+        if (externalIntent == null) {
+            return base;
         }
-        int before = sink.size();
-        for (KnowledgeNode node : nodeRepository.findByNodeType(nodeType)) {
-            if (matchesNodeText(text, node)) {
-                sink.add(node.getName());
-            }
-        }
-        return Math.max(0, sink.size() - before);
+
+        QueryIntent merged = new QueryIntent();
+        merged.setQuery(StringUtils.hasText(externalIntent.getQuery()) ? externalIntent.getQuery() : base.getQuery());
+        merged.setNormalizedQuery(StringUtils.hasText(externalIntent.getNormalizedQuery())
+                ? externalIntent.getNormalizedQuery() : base.getNormalizedQuery());
+        merged.setMaxPrice(externalIntent.getMaxPrice() != null ? externalIntent.getMaxPrice() : base.getMaxPrice());
+        merged.setCity(StringUtils.hasText(externalIntent.getCity()) ? externalIntent.getCity() : base.getCity());
+        merged.setWeekendOnly(externalIntent.isWeekendOnly() || base.isWeekendOnly());
+        merged.setNeedActorFocus(externalIntent.isNeedActorFocus() || base.isNeedActorFocus());
+        merged.setSummary(StringUtils.hasText(externalIntent.getSummary()) ? externalIntent.getSummary() : base.getSummary());
+        merged.setLlmEnabled(externalIntent.isLlmEnabled());
+        merged.setFallbackUsed(externalIntent.isFallbackUsed());
+        merged.getTags().addAll(base.getTags());
+        merged.getTags().addAll(externalIntent.getTags());
+        merged.getTerms().addAll(base.getTerms());
+        merged.getTerms().addAll(externalIntent.getTerms());
+        merged.getInferredTags().addAll(base.getInferredTags());
+        merged.getInferredTags().addAll(externalIntent.getInferredTags());
+        merged.getInferredTerms().addAll(base.getInferredTerms());
+        merged.getInferredTerms().addAll(externalIntent.getInferredTerms());
+        return merged;
     }
 
-    private boolean matchesNodeText(String text, KnowledgeNode node) {
-        if (node == null || !StringUtils.hasText(node.getName())) {
-            return false;
-        }
-        if (text.contains(node.getName())) {
-            return true;
-        }
-        return extractNodeAliases(node).stream().anyMatch(alias -> text.contains(alias));
-    }
-
-    private Set<String> extractNodeAliases(KnowledgeNode node) {
-        Set<String> aliases = new LinkedHashSet<>();
-        collectAliasTokens(aliases, node.getExtraData());
-        collectAliasTokens(aliases, node.getDescription());
-        aliases.remove(node.getName());
-        return aliases;
-    }
-
-    private void collectAliasTokens(Set<String> sink, String rawText) {
-        if (!StringUtils.hasText(rawText)) {
-            return;
-        }
-        for (String token : rawText.split("[,，;；/|、\\s]+")) {
-            String normalized = token == null ? "" : token.trim();
-            if (normalized.length() >= 2 && normalized.length() <= 20) {
-                sink.add(normalized);
-            }
-        }
-    }
-
-    private int matchAliasDictionary(String text, Map<String, List<String>> dictionary, Set<String> sink) {
-        int before = sink.size();
+    private void matchDictionary(String text, Map<String, List<String>> dictionary, Set<String> sink) {
         for (Map.Entry<String, List<String>> entry : dictionary.entrySet()) {
             if (containsAny(text, entry.getValue())) {
                 sink.add(entry.getKey());
             }
         }
-        return Math.max(0, sink.size() - before);
     }
 
     private boolean containsAny(String text, Collection<String> words) {
@@ -273,6 +245,7 @@ public class AdvancedTheaterRecommendationService {
 
     private Map<Long, CandidatePlay> recallCandidates(QueryIntent intent, Long userId, RecallTrace trace) {
         Map<Long, CandidatePlay> map = new LinkedHashMap<>();
+        collectByPlayTitle(intent.getNormalizedQuery(), map, trace);
         collectByNodeNames(intent.getTags(), NodeType.TAG, 3.5, "命中标签：", map, trace.getTagHits());
         collectByNodeNames(intent.getTerms(), NodeType.TERMINOLOGY, 2.2, "相关术语：", map, trace.getTermHits());
         collectByUser(userId, map, trace);
@@ -283,6 +256,22 @@ public class AdvancedTheaterRecommendationService {
         }
         trace.setCandidateCountBeforeFilter(map.size());
         return map;
+    }
+
+    private void collectByPlayTitle(String query, Map<Long, CandidatePlay> map, RecallTrace trace) {
+        if (!StringUtils.hasText(query)) {
+            return;
+        }
+        String text = query.trim();
+        for (KnowledgeNode play : nodeRepository.findByNodeType(NodeType.PLAY)) {
+            if (!matchesPlayTitle(text, play)) {
+                continue;
+            }
+            CandidatePlay candidate = map.computeIfAbsent(play.getId(), id -> CandidatePlay.from(play));
+            candidate.graphScore += isExactPlayTitleMatch(text, play.getName()) ? 8.0 : 4.5;
+            candidate.reasons.add("命中剧名：" + play.getName());
+            trace.getPlayHits().add(play.getName());
+        }
     }
 
     private void collectByNodeNames(Set<String> names,
@@ -393,6 +382,23 @@ public class AdvancedTheaterRecommendationService {
 
     private boolean hasStrongGenreDemand(QueryIntent intent) {
         return intent.getTags().stream().anyMatch(GENRE_TAGS::contains);
+    }
+
+    private boolean matchesPlayTitle(String query, KnowledgeNode play) {
+        if (play == null || !StringUtils.hasText(play.getName()) || !StringUtils.hasText(query)) {
+            return false;
+        }
+        String normalizedQuery = normalizeForTitleMatch(query);
+        String normalizedName = normalizeForTitleMatch(play.getName());
+        return normalizedQuery.contains(normalizedName) || normalizedName.contains(normalizedQuery);
+    }
+
+    private boolean isExactPlayTitleMatch(String query, String playName) {
+        return normalizeForTitleMatch(query).equals(normalizeForTitleMatch(playName));
+    }
+
+    private String normalizeForTitleMatch(String text) {
+        return text == null ? "" : text.replaceAll("[《》\\s·•:：,，。.!！？?、'\"()（）-]", "").trim();
     }
 
     private boolean matchesGenreDemand(CandidatePlay candidate, Set<String> requestedTags) {
@@ -576,6 +582,7 @@ public class AdvancedTheaterRecommendationService {
 
     @Data
     private static class RecallTrace {
+        private Set<String> playHits = new LinkedHashSet<>();
         private Set<String> tagHits = new LinkedHashSet<>();
         private Set<String> termHits = new LinkedHashSet<>();
         private Set<String> userSignals = new LinkedHashSet<>();
@@ -583,6 +590,7 @@ public class AdvancedTheaterRecommendationService {
 
         Map<String, Object> toMap() {
             Map<String, Object> map = new LinkedHashMap<>();
+            map.put("playHits", List.copyOf(playHits));
             map.put("tagHits", List.copyOf(tagHits));
             map.put("termHits", List.copyOf(termHits));
             map.put("userSignals", List.copyOf(userSignals));
