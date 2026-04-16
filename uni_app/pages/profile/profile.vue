@@ -72,7 +72,7 @@ export default {
 			currentTab: 0,
 			tabs: ['个人', '日志', 'AI生成', '盘票'],
 			menuItems: [
-				{ icon: '📋', title: '我的订单', desc: '查看购票订单' },
+				{ icon: '📋', title: '我的订单', desc: '线下购票记录（占位）' },
 				{ icon: '❤', title: '我的收藏', desc: '收藏的演出和剧目' },
 				{ icon: '🕐', title: '观看历史', desc: '历史观剧记录' },
 				{ icon: '⭐', title: '积分中心', desc: '积分兑换和奖励' },

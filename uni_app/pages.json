@@ -11,7 +11,7 @@
 		{
 			"path": "pages/performances/performances",
 			"style": {
-				"navigationBarTitleText": "购票",
+				"navigationBarTitleText": "演出",
 				"navigationBarBackgroundColor": "#FFFFFF",
 				"navigationBarTextStyle": "black"
 			}
@@ -46,7 +46,11 @@
 		},
 		{
 			"path": "pages/ai-generation/ai-generation",
-			"style": { "navigationBarTitleText": "AI生成" }
+			"style": { "navigationBarTitleText": "AI智能推荐" }
+		},
+		{
+			"path": "pages/ai-creative/ai-creative",
+			"style": { "navigationBarTitleText": "AI文创生成" }
 		},
 		{
 			"path": "pages/performance-detail/performance-detail",
@@ -78,19 +82,27 @@
 		},
 		{
 			"path": "pages/seat-mode/seat-mode",
-			"style": { "navigationBarTitleText": "选择选座方式" }
-		},
-		{
-			"path": "pages/seat-selection-2d/seat-selection-2d",
-			"style": { "navigationBarTitleText": "2D选座" }
+			"style": { "navigationBarTitleText": "3D选座" }
 		},
 		{
 			"path": "pages/seat-selection-3d/seat-selection-3d",
 			"style": { "navigationBarTitleText": "3D选座" }
 		},
 		{
-			"path": "pages/payment/payment",
-			"style": { "navigationBarTitleText": "确认支付" }
+			"path": "pages/news/news",
+			"style": { "navigationBarTitleText": "新闻资讯" }
+		},
+		{
+			"path": "pages/timeline/timeline",
+			"style": { "navigationBarTitleText": "时间线" }
+		},
+		{
+			"path": "pages/qa/qa",
+			"style": { "navigationBarTitleText": "智能问答" }
+		},
+		{
+			"path": "pages/node-detail/node-detail",
+			"style": { "navigationBarTitleText": "节点详情", "navigationBarBackgroundColor": "#FFFFFF", "navigationBarTextStyle": "black" }
 		}
 	],
 	"tabBar": {
@@ -107,7 +119,7 @@
 			},
 			{
 				"pagePath": "pages/performances/performances",
-				"text": "购票",
+				"text": "演出",
 				"iconPath": "static/tab-cart.png",
 				"selectedIconPath": "static/tab-cart-active.png"
 			},

@@ -18,12 +18,12 @@
 		<!-- 快速功能 -->
 		<view class="section">
 			<text class="section-title">⚡ 快速功能</text>
-			<view class="quick-desc">多剧场多场次选座购票、求票转票、AI创作与知识查询</view>
+			<view class="quick-desc">多剧场演出信息、3D选座视图、求票转票、AI创作与知识查询</view>
 			<view class="quick-row">
 				<view class="quick-item" @click="goPage('/pages/performances/performances')">
 					<text class="quick-icon">🛒</text>
-					<text class="quick-text">购票</text>
-					<text class="quick-hint">选座·支付</text>
+					<text class="quick-text">演出</text>
+					<text class="quick-hint">3D选座</text>
 				</view>
 				<view class="quick-item" @click="goTicketExchange">
 					<text class="quick-icon">🔄</text>
@@ -31,9 +31,9 @@
 					<text class="quick-hint">求票·转票</text>
 				</view>
 				<view class="quick-item" @click="goAIGeneration">
-					<text class="quick-icon">✨</text>
-					<text class="quick-text">AI生成</text>
-					<text class="quick-hint">观后感·文创</text>
+					<text class="quick-icon">🧠</text>
+					<text class="quick-text">AI推荐</text>
+					<text class="quick-hint">多路召回·方案生成</text>
 				</view>
 			</view>
 			<view class="quick-row">
@@ -69,7 +69,7 @@
 						<text class="perf-desc">{{ item.description }}</text>
 						<view class="perf-footer">
 							<text class="perf-price">{{ item.price }}</text>
-							<view class="btn-buy">立即购票</view>
+							<view class="btn-buy">查看演出</view>
 						</view>
 					</view>
 				</view>

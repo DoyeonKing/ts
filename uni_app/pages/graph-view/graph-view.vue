@@ -1,100 +1,60 @@
 <template>
 	<view class="page">
-		<!-- 顶部工具栏 -->
-		<view class="toolbar">
-			<view class="filter-row">
-				<view
-					v-for="t in typeFilters" :key="t.key"
-					class="filter-btn"
-					:class="{ active: activeTypes.includes(t.key) }"
-					:style="{ borderColor: t.color, color: activeTypes.includes(t.key) ? '#fff' : t.color, background: activeTypes.includes(t.key) ? t.color : 'transparent' }"
-					@click="toggleType(t.key)"
-				>{{ t.label }}</view>
-			</view>
-			<view class="search-row">
-				<input class="search-input" v-model="searchKey" placeholder="搜索节点..." @confirm="onSearch" />
-				<view class="search-btn" @click="onSearch">搜</view>
-			</view>
-		</view>
-
-		<!-- Canvas 图谱 -->
-		<canvas
-			type="2d"
-			id="graphCanvas"
-			class="graph-canvas"
-			:style="{ width: canvasW + 'px', height: canvasH + 'px' }"
-			@touchstart="onTouchStart"
-			@touchmove="onTouchMove"
-			@touchend="onTouchEnd"
-		></canvas>
-
-		<!-- 图例 -->
-		<view class="legend">
-			<view class="legend-item" v-for="t in typeFilters" :key="t.key">
-				<view class="legend-dot" :style="{ background: t.color }"></view>
-				<text class="legend-text">{{ t.label }}</text>
-			</view>
-		</view>
-
-		<!-- 节点详情弹窗 -->
-		<view class="detail-mask" v-if="selectedNode" @click="selectedNode = null">
-			<view class="detail-card" @click.stop>
-				<view class="detail-header">
-					<view class="detail-dot" :style="{ background: getColor(selectedNode.nodeType) }"></view>
-					<text class="detail-name">{{ selectedNode.name }}</text>
-					<text class="detail-type">{{ getTypeLabel(selectedNode.nodeType) }}</text>
-				</view>
-				<text class="detail-desc" v-if="selectedNode.description">{{ selectedNode.description }}</text>
-				<view class="detail-links" v-if="selectedNode.linkCount">
-					<text class="detail-link-count">关联 {{ selectedNode.linkCount }} 个节点</text>
-				</view>
-				<!-- 智能推荐：猜你喜欢 -->
-				<view class="detail-rec" v-if="nodeRecommendations.plays.length || nodeRecommendations.actors.length || nodeRecommendations.others.length">
-					<text class="detail-rec-title">猜你喜欢</text>
-					<view class="detail-rec-list">
-						<view class="detail-rec-item" v-for="(r, i) in allRecommendations" :key="i" @tap="onRecommendClick(r)">
-							<view class="detail-rec-text">
-								<text class="detail-rec-name">{{ r.name }}</text>
-								<text class="detail-rec-reason">{{ r.reason }}</text>
-							</view>
-							<text class="detail-rec-go">›</text>
-						</view>
+		<view class="toolbar-shell">
+			<view class="toolbar">
+				<view class="toolbar-top">
+					<view class="toolbar-title-wrap">
+						<text class="toolbar-kicker">STAGE MAP</text>
+						<text class="toolbar-title">知识图谱全景</text>
 					</view>
+					<view class="toolbar-badge">3D旋转 · 点击聚焦</view>
 				</view>
-				<view class="detail-actions">
-					<view class="detail-btn primary" v-if="hasNodeDetailPage(selectedNode)" @tap="goToNodeDetail(selectedNode)">进入{{ getTypeLabel(selectedNode.nodeType) }}详情</view>
-					<view class="detail-btn" @tap="focusNode(selectedNode.id)">以此为中心展开</view>
-					<view class="detail-btn secondary" @tap="selectedNode = null">关闭</view>
+				<view class="filter-row">
+					<view v-for="t in typeFilters" :key="t.key" class="filter-btn" :style="pillStyle(t)" @tap="toggleType(t.key)">{{ t.label }}</view>
+				</view>
+				<view class="search-row">
+					<input class="search-input" v-model="searchKey" placeholder="搜索节点、人物、术语..." placeholder-style="color: rgba(255,240,228,.35);" @confirm="onSearch" />
+					<view class="search-btn" @tap="onSearch">搜索</view>
 				</view>
 			</view>
 		</view>
-
-		<!-- 加载状态 -->
-		<view class="loading-mask" v-if="loading">
-			<text class="loading-text">加载图谱中...</text>
+		<view class="tap-guide">单指拖动画布可旋转视角，轻点节点聚焦并打开详情</view>
+		<canvas canvas-id="graphCanvas" id="graphCanvas" class="graph-canvas" :style="{ width: canvasW + 'px', height: canvasH + 'px' }" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd"></canvas>
+		<view class="legend-shell">
+			<view class="tap-hint">点击节点查看详情，轻点空白恢复旋转</view>
+			<view class="legend">
+				<view class="legend-item" v-for="t in typeFilters" :key="t.key">
+					<view class="legend-dot" :style="{ background: t.color }"></view>
+					<text class="legend-text">{{ t.label }}</text>
+				</view>
+			</view>
 		</view>
+		<cover-view class="detail-mask" v-if="selectedNode" @tap="clearSelection">
+			<cover-view class="detail-card" @tap.stop>
+				<cover-view class="detail-head">
+					<cover-view class="detail-dot" :style="{ background: getColor(selectedNode.nodeType) }"></cover-view>
+					<cover-view class="detail-name">{{ selectedNode.name }}</cover-view>
+					<cover-view class="detail-type">{{ getTypeLabel(selectedNode.nodeType) }}</cover-view>
+				</cover-view>
+				<cover-view class="detail-desc">{{ selectedNode.description || '暂无简介' }}</cover-view>
+				<cover-view class="detail-links">关联 {{ selectedNode.linkCount || 0 }} 个节点</cover-view>
+				<cover-view class="detail-actions">
+					<cover-view class="detail-btn primary" @tap="goDetail(selectedNode)">进入详情</cover-view>
+					<cover-view class="detail-btn" @tap="recenter(selectedNode.id)">以此为中心</cover-view>
+					<cover-view class="detail-btn secondary" @tap="clearSelection">关闭</cover-view>
+				</cover-view>
+			</cover-view>
+		</cover-view>
+		<view class="mask" v-if="loading"><view class="ring"></view><text class="mask-text">图谱加载中...</text></view>
 	</view>
 </template>
 
 <script>
 import { getFullGraph, getNodeNeighborhood, searchNodes } from '../../api/knowledgeGraph.js'
-import { getRecommendationsForNode } from '../../api/recommendation.js'
-
-const TYPE_COLORS = {
-	PLAY: '#6366f1',
-	ACTOR: '#f59e0b',
-	TERMINOLOGY: '#10b981',
-	TAG: '#8b5cf6',
-	VENUE: '#ef4444'
-}
-
-const TYPE_LABELS = {
-	PLAY: '剧目',
-	ACTOR: '演员',
-	TERMINOLOGY: '术语',
-	TAG: '标签',
-	VENUE: '场馆'
-}
+const TYPE_COLORS = { PLAY:'#6366f1', ACTOR:'#f59e0b', TERMINOLOGY:'#10b981', TAG:'#8b5cf6', VENUE:'#ef4444' }
+const TYPE_LABELS = { PLAY:'剧目', ACTOR:'演员', TERMINOLOGY:'术语', TAG:'标签', VENUE:'场馆' }
+const MAX_NODES = 54
+const touchPoint = t => ({ x: t.clientX != null ? t.clientX : (t.pageX != null ? t.pageX : (t.x || 0)), y: t.clientY != null ? t.clientY : (t.pageY != null ? t.pageY : (t.y || 0)) })
 
 export default {
 	data() {
@@ -102,19 +62,13 @@ export default {
 			canvasW: 375,
 			canvasH: 600,
 			ctx: null,
-			canvas: null,
-			dpr: 1,
-
+			loading: false,
+			searchKey: '',
+			focusNodeId: null,
 			nodes: [],
 			edges: [],
-			simNodes: [],
-			simEdges: [],
-
+			renderNodes: [],
 			selectedNode: null,
-			nodeRecommendations: { plays: [], actors: [], others: [] },
-			searchKey: '',
-			loading: false,
-
 			activeTypes: ['PLAY', 'ACTOR', 'TERMINOLOGY', 'TAG', 'VENUE'],
 			typeFilters: [
 				{ key: 'PLAY', label: '剧目', color: TYPE_COLORS.PLAY },
@@ -123,807 +77,304 @@ export default {
 				{ key: 'TAG', label: '标签', color: TYPE_COLORS.TAG },
 				{ key: 'VENUE', label: '场馆', color: TYPE_COLORS.VENUE }
 			],
-
-			// 视图变换
-			offsetX: 0,
-			offsetY: 0,
-			scale: 1,
-
-			// 触摸状态
+			rotY: 0,
+			rotX: -0.16,
 			touchStartX: 0,
 			touchStartY: 0,
-			draggingNode: null,
+			lastX: 0,
+			lastY: 0,
 			isPanning: false,
-			lastPanX: 0,
-			lastPanY: 0,
-
-			animFrameId: null,
-			simRunning: false,
-			simAlpha: 1,
-
-			focusNodeId: null,
-			canvasRect: null
+			canvasRect: null,
+			timer: null,
+			autoSpeed: 0.012
 		}
 	},
-
-	onLoad(opts) {
-		const sysInfo = uni.getSystemInfoSync()
-		this.canvasW = sysInfo.windowWidth
-		this.canvasH = sysInfo.windowHeight - 160
-		this.dpr = sysInfo.pixelRatio || 2
-		this.offsetX = this.canvasW / 2
-		this.offsetY = this.canvasH / 2
-
-		if (opts && opts.nodeId) {
-			this.focusNodeId = parseInt(opts.nodeId)
-		}
+	onLoad(o) {
+		const sys = uni.getSystemInfoSync()
+		this.canvasW = sys.windowWidth
+		this.canvasH = sys.windowHeight - 168
+		if (o && o.nodeId) this.focusNodeId = parseInt(o.nodeId)
 	},
-
 	onReady() {
-		this.initCanvas()
+		this.ctx = uni.createCanvasContext('graphCanvas', this)
+		this.updateCanvasRect()
+		this.loadData()
+		this.startRotate()
 	},
-
 	onUnload() {
-		this.simRunning = false
+		if (this.timer) clearInterval(this.timer)
 	},
-
-	watch: {
-		selectedNode(n) {
-			if (n && n.id) this.loadNodeRecommendations(n.id)
-			else this.nodeRecommendations = { plays: [], actors: [], others: [] }
-		}
-	},
-
-	computed: {
-		allRecommendations() {
-			const r = this.nodeRecommendations
-			const list = [...(r.plays || []), ...(r.actors || []), ...(r.others || [])]
-			return list.slice(0, 8)
-		}
-	},
-
 	methods: {
-		async loadNodeRecommendations(nodeId) {
-			try {
-				const res = await getRecommendationsForNode(nodeId)
-				const data = res.data || res
-				this.nodeRecommendations = {
-					plays: data.plays || [],
-					actors: data.actors || [],
-					others: data.others || []
-				}
-			} catch (e) {
-				this.nodeRecommendations = { plays: [], actors: [], others: [] }
-			}
-		},
-		/** 进入当前选中节点的详情页（剧目/演员/术语等） */
-		goToNodeDetail(node) {
-			if (!node) return
-			this.selectedNode = null
-			if (node.nodeType === 'PLAY') {
-				uni.navigateTo({ url: `/pages/play-detail/play-detail?id=${node.id}` }).catch(() => {})
-			} else if (node.nodeType === 'ACTOR') {
-				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?id=${node.id}` }).catch(() => {})
-			} else if (node.nodeType === 'TERMINOLOGY') {
-				uni.navigateTo({ url: `/pages/terminology/terminology` }).catch(() => {})
-			} else {
-				this.focusNode(node.id)
-			}
-		},
-		/** 当前节点是否有独立详情页（用于显示/隐藏「进入详情」按钮） */
-		hasNodeDetailPage(node) {
-			if (!node) return false
-			return node.nodeType === 'PLAY' || node.nodeType === 'ACTOR' || node.nodeType === 'TERMINOLOGY'
-		},
-		/** 点击「猜你喜欢」某一项：跳转详情或在图谱中展开 */
-		onRecommendClick(r) {
-			this.selectedNode = null
-			if (r.nodeType === 'PLAY') {
-				uni.navigateTo({ url: `/pages/play-detail/play-detail?id=${r.id}` }).catch(() => {})
-			} else if (r.nodeType === 'ACTOR') {
-				uni.navigateTo({ url: `/pages/actor-detail/actor-detail?id=${r.id}` }).catch(() => {})
-			} else if (r.nodeType === 'TERMINOLOGY') {
-				uni.navigateTo({ url: `/pages/terminology/terminology` }).catch(() => {})
-			} else {
-				this.focusNode(r.id)
-			}
-		},
-		initCanvas() {
-			const query = uni.createSelectorQuery().in(this)
-			query.select('#graphCanvas').fields({ node: true, size: true }).exec((res) => {
-				if (!res || !res[0] || !res[0].node) {
-					// 降级：使用旧版 canvas API
-					this.initCanvasLegacy()
-					return
-				}
-				const canvas = res[0].node
-				const ctx = canvas.getContext('2d')
-				canvas.width = this.canvasW * this.dpr
-				canvas.height = this.canvasH * this.dpr
-				ctx.scale(this.dpr, this.dpr)
-				this.ctx = ctx
-				this.canvas = canvas
-				this.loadData()
-				this.updateCanvasRect()
-			})
-		},
 		updateCanvasRect() {
-			const q = uni.createSelectorQuery().in(this)
-			q.select('#graphCanvas').boundingClientRect(rect => {
-				if (rect) this.canvasRect = { left: rect.left, top: rect.top }
+			uni.createSelectorQuery().in(this).select('#graphCanvas').boundingClientRect(r => {
+				if (r) this.canvasRect = { left: r.left, top: r.top }
 			}).exec()
 		},
-
-		initCanvasLegacy() {
-			const ctx = uni.createCanvasContext('graphCanvas', this)
-			this.ctx = ctx
-			this.canvas = null
-			this.loadData()
-			this.updateCanvasRect()
+		getColor(t) { return TYPE_COLORS[t] || '#999' },
+		getTypeLabel(t) { return TYPE_LABELS[t] || t },
+		pillStyle(t) {
+			const active = this.activeTypes.includes(t.key)
+			return {
+				borderColor: active ? t.color : 'rgba(255,255,255,.14)',
+				color: active ? '#fff7eb' : 'rgba(255,240,228,.72)',
+				background: active ? t.color : 'rgba(255,255,255,.04)'
+			}
 		},
-
 		async loadData() {
 			this.loading = true
 			try {
-				let res
-				if (this.focusNodeId) {
-					res = await getNodeNeighborhood(this.focusNodeId)
-				} else {
-					res = await getFullGraph()
-				}
+				const res = this.focusNodeId ? await getNodeNeighborhood(this.focusNodeId) : await getFullGraph()
 				const data = res.data || res
-				this.nodes = data.nodes || []
-				this.edges = data.edges || []
-				this.initSimulation()
+				this.nodes = (data.nodes || []).filter(n => this.activeTypes.includes(n.nodeType)).slice(0, MAX_NODES)
+				const ids = new Set(this.nodes.map(n => n.id))
+				this.edges = (data.edges || []).filter(e => ids.has(e.source) && ids.has(e.target))
+				this.layoutNodes()
 			} catch (e) {
-				console.error('加载图谱失败', e)
-				this.useMockData()
+				this.nodes = []
+				this.edges = []
+				this.renderNodes = []
+				this.drawGraph()
+				uni.showToast({ title: '图谱加载失败', icon: 'none' })
+			} finally {
+				this.loading = false
 			}
-			this.loading = false
 		},
-
-		useMockData() {
-			this.nodes = [
-				{ id: 1, name: '哈姆雷特', nodeType: 'PLAY', linkCount: 6, description: '莎士比亚四大悲剧之一' },
-				{ id: 2, name: '李尔王', nodeType: 'PLAY', linkCount: 4, description: '莎士比亚四大悲剧' },
-				{ id: 3, name: '罗密欧与朱丽叶', nodeType: 'PLAY', linkCount: 3 },
-				{ id: 4, name: '天鹅湖', nodeType: 'PLAY', linkCount: 3 },
-				{ id: 5, name: '茶花女', nodeType: 'PLAY', linkCount: 2 },
-				{ id: 6, name: '茶馆', nodeType: 'PLAY', linkCount: 4 },
-				{ id: 7, name: '濮存昕', nodeType: 'ACTOR', linkCount: 4 },
-				{ id: 8, name: '袁泉', nodeType: 'ACTOR', linkCount: 2 },
-				{ id: 9, name: '何冰', nodeType: 'ACTOR', linkCount: 3 },
-				{ id: 10, name: '莎士比亚', nodeType: 'TAG', linkCount: 4 },
-				{ id: 11, name: '悲剧', nodeType: 'TAG', linkCount: 3 },
-				{ id: 12, name: '经典', nodeType: 'TAG', linkCount: 3 },
-				{ id: 13, name: '独白', nodeType: 'TERMINOLOGY', linkCount: 2 },
-				{ id: 14, name: '谢幕', nodeType: 'TERMINOLOGY', linkCount: 2 },
-				{ id: 15, name: '国家大剧院', nodeType: 'VENUE', linkCount: 2 },
-				{ id: 16, name: '北京人艺', nodeType: 'VENUE', linkCount: 3 }
-			]
-			this.edges = [
-				{ source: 7, target: 1, relationType: 'PERFORMS_IN', label: '饰 哈姆雷特' },
-				{ source: 7, target: 2, relationType: 'PERFORMS_IN', label: '饰 李尔王' },
-				{ source: 7, target: 6, relationType: 'PERFORMS_IN', label: '饰 常四爷' },
-				{ source: 8, target: 1, relationType: 'PERFORMS_IN', label: '饰 奥菲利亚' },
-				{ source: 9, target: 2, relationType: 'PERFORMS_IN' },
-				{ source: 9, target: 6, relationType: 'PERFORMS_IN' },
-				{ source: 1, target: 10, relationType: 'HAS_TAG' },
-				{ source: 1, target: 11, relationType: 'HAS_TAG' },
-				{ source: 1, target: 12, relationType: 'HAS_TAG' },
-				{ source: 2, target: 10, relationType: 'HAS_TAG' },
-				{ source: 2, target: 11, relationType: 'HAS_TAG' },
-				{ source: 3, target: 10, relationType: 'HAS_TAG' },
-				{ source: 4, target: 12, relationType: 'HAS_TAG' },
-				{ source: 6, target: 12, relationType: 'HAS_TAG' },
-				{ source: 1, target: 13, relationType: 'HAS_TERMINOLOGY' },
-				{ source: 1, target: 2, relationType: 'SIMILAR_TO' },
-				{ source: 1, target: 3, relationType: 'SIMILAR_TO' },
-				{ source: 1, target: 15, relationType: 'PERFORMED_AT' },
-				{ source: 6, target: 16, relationType: 'PERFORMED_AT' },
-				{ source: 7, target: 16, relationType: 'WORKS_AT' },
-				{ source: 9, target: 16, relationType: 'WORKS_AT' },
-				{ source: 13, target: 14, relationType: 'RELATED_TO' }
-			]
-			this.initSimulation()
-		},
-
-		initSimulation() {
-			const visibleTypes = new Set(this.activeTypes)
-			const filteredNodes = this.nodes.filter(n => visibleTypes.has(n.nodeType))
-			const nodeIdSet = new Set(filteredNodes.map(n => n.id))
-
-			const cx = 0, cy = 0
-			this.simNodes = filteredNodes.map((n, i) => {
-				const angle = (2 * Math.PI * i) / filteredNodes.length
-				const r = Math.min(this.canvasW, this.canvasH) * 0.3
+		layoutNodes() {
+			const step = Math.PI * (3 - Math.sqrt(5))
+			const radius = Math.min(this.canvasW, this.canvasH) * 0.31
+			this.renderNodes = this.nodes.map((n, i) => {
+				const phi = Math.acos(1 - 2 * ((i + 0.5) / Math.max(this.nodes.length, 1)))
+				const theta = step * i
+				const base = n.nodeType === 'TAG' ? 15 : n.nodeType === 'TERMINOLOGY' ? 18 : 21
 				return {
 					...n,
-					x: cx + r * Math.cos(angle) + (Math.random() - 0.5) * 30,
-					y: cy + r * Math.sin(angle) + (Math.random() - 0.5) * 30,
-					vx: 0,
-					vy: 0,
-					radius: this.getNodeRadius(n)
+					r: Math.min(base + Math.min(n.linkCount || 0, 8) * 1.9, 36),
+					x: radius * Math.sin(phi) * Math.cos(theta),
+					y: radius * Math.cos(phi) * 0.9,
+					z: radius * Math.sin(phi) * Math.sin(theta)
 				}
 			})
-
-			this.simEdges = this.edges.filter(e => nodeIdSet.has(e.source) && nodeIdSet.has(e.target))
-			this.simAlpha = 1
-			this.startSimulation()
+			this.drawGraph()
 		},
-
-		getNodeRadius(node) {
-			const count = node.linkCount || 1
-			const base = node.nodeType === 'TAG' ? 14 : 18
-			return Math.min(base + count * 2, 36)
+		startRotate() {
+			if (this.timer) clearInterval(this.timer)
+			this.timer = setInterval(() => {
+				if (this.selectedNode) return
+				this.rotY += this.autoSpeed
+				this.drawGraph()
+			}, 32)
 		},
-
-		startSimulation() {
-			this.simRunning = true
-			const tick = () => {
-				if (!this.simRunning) return
-				this.simulationStep()
-				this.render()
-				if (this.simAlpha > 0.005) {
-					if (this.canvas && this.canvas.requestAnimationFrame) {
-						this.animFrameId = this.canvas.requestAnimationFrame(tick)
-					} else {
-						this.animFrameId = setTimeout(tick, 16)
-					}
-				} else {
-					this.simRunning = false
-					this.render()
-				}
-			}
-			tick()
+		projectNode(n) {
+			const sy = Math.sin(this.rotY), cy = Math.cos(this.rotY)
+			const sx = Math.sin(this.rotX), cx = Math.cos(this.rotX)
+			const x1 = n.x * cy - n.z * sy
+			const z1 = n.x * sy + n.z * cy
+			const y1 = n.y * cx - z1 * sx
+			const z2 = n.y * sx + z1 * cx
+			const p = 360 / (360 - z2)
+			return { ...n, rx: x1 * p, ry: y1 * p, rz: z2, rr: n.r * (0.8 + p * 0.25) }
 		},
-
-		simulationStep() {
-			const alpha = this.simAlpha
-			const nodes = this.simNodes
-			const edges = this.simEdges
-			const nodeMap = {}
-			nodes.forEach(n => { nodeMap[n.id] = n })
-
-			// 斥力（节点之间互相排斥）
-			const repulsion = 3000
-			for (let i = 0; i < nodes.length; i++) {
-				for (let j = i + 1; j < nodes.length; j++) {
-					const a = nodes[i], b = nodes[j]
-					let dx = b.x - a.x
-					let dy = b.y - a.y
-					let dist = Math.sqrt(dx * dx + dy * dy) || 1
-					let force = repulsion / (dist * dist)
-					let fx = (dx / dist) * force * alpha
-					let fy = (dy / dist) * force * alpha
-					a.vx -= fx
-					a.vy -= fy
-					b.vx += fx
-					b.vy += fy
-				}
-			}
-
-			// 引力（沿边吸引）
-			const attraction = 0.06
-			edges.forEach(e => {
-				const a = nodeMap[e.source]
-				const b = nodeMap[e.target]
-				if (!a || !b) return
-				let dx = b.x - a.x
-				let dy = b.y - a.y
-				let dist = Math.sqrt(dx * dx + dy * dy) || 1
-				let force = (dist - 100) * attraction * alpha
-				let fx = (dx / dist) * force
-				let fy = (dy / dist) * force
-				a.vx += fx
-				a.vy += fy
-				b.vx -= fx
-				b.vy -= fy
-			})
-
-			// 中心引力
-			const gravity = 0.02
-			nodes.forEach(n => {
-				n.vx -= n.x * gravity * alpha
-				n.vy -= n.y * gravity * alpha
-			})
-
-			// 更新位置，阻尼
-			const damping = 0.6
-			nodes.forEach(n => {
-				if (n === this.draggingNode) return
-				n.vx *= damping
-				n.vy *= damping
-				n.x += n.vx
-				n.y += n.vy
-			})
-
-			this.simAlpha *= 0.98
+		isRelated(id) {
+			if (!this.selectedNode) return true
+			if (id === this.selectedNode.id) return true
+			return this.edges.some(e => (e.source === this.selectedNode.id && e.target === id) || (e.target === this.selectedNode.id && e.source === id))
 		},
-
-		render() {
+		drawGraph() {
 			const ctx = this.ctx
 			if (!ctx) return
-			const w = this.canvasW
-			const h = this.canvasH
-			const ox = this.offsetX
-			const oy = this.offsetY
-			const sc = this.scale
-			const nodeMap = {}
-			this.simNodes.forEach(n => { nodeMap[n.id] = n })
-
-			if (this.canvas) {
-				// 新版 canvas 2d
-				ctx.clearRect(0, 0, w, h)
-			} else {
-				ctx.setFillStyle('#f5f5f5')
-				ctx.fillRect(0, 0, w, h)
-			}
-
-			// 绘制边
-			this.simEdges.forEach(e => {
-				const a = nodeMap[e.source]
-				const b = nodeMap[e.target]
+			const w = this.canvasW, h = this.canvasH, ox = w / 2, oy = h / 2
+			const nodes = this.renderNodes.map(n => this.projectNode(n)).sort((a, b) => a.rz - b.rz)
+			const selectedId = this.selectedNode && this.selectedNode.id
+			ctx.clearRect(0, 0, w, h)
+			ctx.setFillStyle('#10070b')
+			ctx.fillRect(0, 0, w, h)
+			this.edges.forEach(e => {
+				const a = nodes.find(n => n.id === e.source)
+				const b = nodes.find(n => n.id === e.target)
 				if (!a || !b) return
-				const x1 = a.x * sc + ox
-				const y1 = a.y * sc + oy
-				const x2 = b.x * sc + ox
-				const y2 = b.y * sc + oy
-
+				const hi = !selectedId || e.source === selectedId || e.target === selectedId
 				ctx.beginPath()
-				ctx.moveTo(x1, y1)
-				ctx.lineTo(x2, y2)
-				if (this.canvas) {
-					ctx.strokeStyle = 'rgba(180,180,200,0.5)'
-					ctx.lineWidth = 1
-				} else {
-					ctx.setStrokeStyle('rgba(180,180,200,0.5)')
-					ctx.setLineWidth(1)
-				}
+				ctx.moveTo(a.rx + ox, a.ry + oy)
+				ctx.lineTo(b.rx + ox, b.ry + oy)
+				ctx.setStrokeStyle(hi ? 'rgba(242,201,76,.42)' : 'rgba(255,255,255,.1)')
+				ctx.setLineWidth(hi ? 1.5 : 1)
 				ctx.stroke()
-
-				// 边上的标签
-				if (e.label) {
-					const mx = (x1 + x2) / 2
-					const my = (y1 + y2) / 2
-					if (this.canvas) {
-						ctx.font = `${9 * sc}px sans-serif`
-						ctx.fillStyle = '#999'
-						ctx.textAlign = 'center'
-						ctx.textBaseline = 'middle'
-					} else {
-						ctx.setFontSize(9 * sc)
-						ctx.setFillStyle('#999')
-						ctx.setTextAlign('center')
-						ctx.setTextBaseline('middle')
-					}
-					ctx.fillText(e.label, mx, my - 6 * sc)
-				}
 			})
-
-			// 绘制节点
-			this.simNodes.forEach(n => {
-				const x = n.x * sc + ox
-				const y = n.y * sc + oy
-				const r = n.radius * sc
-				const color = TYPE_COLORS[n.nodeType] || '#999'
-
-				// 选中高亮
-				const isSelected = this.selectedNode && this.selectedNode.id === n.id
-
-				// 外发光
-				if (isSelected) {
+			nodes.forEach(n => {
+				const x = n.rx + ox, y = n.ry + oy
+				const sel = selectedId === n.id
+				const faded = selectedId && !this.isRelated(n.id)
+				ctx.beginPath()
+				ctx.arc(x, y, n.rr + 7, 0, Math.PI * 2)
+				ctx.setFillStyle(sel ? 'rgba(255,248,231,.2)' : 'rgba(255,255,255,.08)')
+				ctx.fill()
+				ctx.beginPath()
+				ctx.arc(x, y, n.rr, 0, Math.PI * 2)
+				ctx.setFillStyle(this.getColor(n.nodeType))
+				ctx.fill()
+				ctx.setLineWidth(sel ? 3 : 1.4)
+				ctx.setStrokeStyle(sel ? 'rgba(255,248,231,.98)' : 'rgba(255,255,255,.86)')
+				ctx.stroke()
+				if (faded) {
 					ctx.beginPath()
-					ctx.arc(x, y, r + 4 * sc, 0, Math.PI * 2)
-					if (this.canvas) {
-						ctx.fillStyle = color + '40'
-					} else {
-						ctx.setFillStyle(color + '40')
-					}
+					ctx.arc(x, y, n.rr, 0, Math.PI * 2)
+					ctx.setFillStyle('rgba(17,7,11,.46)')
 					ctx.fill()
 				}
-
-				// 圆形节点
-				ctx.beginPath()
-				ctx.arc(x, y, r, 0, Math.PI * 2)
-				if (this.canvas) {
-					ctx.fillStyle = color
-				} else {
-					ctx.setFillStyle(color)
-				}
-				ctx.fill()
-
-				// 白色边框
-				ctx.beginPath()
-				ctx.arc(x, y, r, 0, Math.PI * 2)
-				if (this.canvas) {
-					ctx.strokeStyle = '#fff'
-					ctx.lineWidth = 2 * sc
-				} else {
-					ctx.setStrokeStyle('#fff')
-					ctx.setLineWidth(2 * sc)
-				}
-				ctx.stroke()
-
-				// 节点文字
-				const fontSize = Math.max(10, Math.min(13, r * 0.7)) * sc
-				if (this.canvas) {
-					ctx.font = `bold ${fontSize}px sans-serif`
-					ctx.fillStyle = '#fff'
-					ctx.textAlign = 'center'
-					ctx.textBaseline = 'middle'
-				} else {
-					ctx.setFontSize(fontSize)
-					ctx.setFillStyle('#fff')
-					ctx.setTextAlign('center')
-					ctx.setTextBaseline('middle')
-				}
-
-				// 长文本截断
-				let label = n.name
-				if (label.length > 4) {
-					label = label.substring(0, 3) + '..'
-				}
-				ctx.fillText(label, x, y)
-
-				// 节点下方完整名称
-				if (n.name.length > 4) {
-					const subSize = 9 * sc
-					if (this.canvas) {
-						ctx.font = `${subSize}px sans-serif`
-						ctx.fillStyle = '#666'
-					} else {
-						ctx.setFontSize(subSize)
-						ctx.setFillStyle('#666')
-					}
-					ctx.fillText(n.name, x, y + r + 12 * sc)
+				const name = String(n.name || '')
+				ctx.setFillStyle('#fff9ef')
+				ctx.setFontSize(sel ? 12 : 10)
+				ctx.setTextAlign('center')
+				ctx.setTextBaseline('middle')
+				ctx.fillText(name.length > 4 ? name.slice(0, 3) + '..' : name, x, y)
+				if (name.length > 4) {
+					ctx.setFontSize(9)
+					ctx.setFillStyle('rgba(255,240,228,.72)')
+					ctx.fillText(name, x, y + n.rr + 11)
 				}
 			})
-
-			// 旧版 canvas 需要 draw
-			if (!this.canvas) {
-				ctx.draw()
-			}
+			ctx.draw()
 		},
-
-		// ===== 触摸交互 =====
-
-		getCanvasLocalXY(touch) {
-			if (this.canvasRect && touch.clientX != null && touch.clientY != null)
-				return { x: touch.clientX - this.canvasRect.left, y: touch.clientY - this.canvasRect.top }
-			return { x: touch.x, y: touch.y }
+		localPoint(t) {
+			const p = touchPoint(t)
+			return this.canvasRect ? { x: p.x - this.canvasRect.left, y: p.y - this.canvasRect.top } : p
 		},
-
-		onTouchStart(e) {
-			const touch = e.touches[0]
-			const local = this.getCanvasLocalXY(touch)
-			this.touchStartX = local.x
-			this.touchStartY = local.y
-			this.lastPanX = local.x
-			this.lastPanY = local.y
-
-			// 检测是否点中了节点
-			const hit = this.hitTestNode(local.x, local.y)
-			if (hit) {
-				this.draggingNode = hit
-			} else {
-				this.draggingNode = null
-				this.isPanning = true
-			}
-		},
-
-		onTouchMove(e) {
-			const touch = e.touches[0]
-			const local = this.getCanvasLocalXY(touch)
-			if (this.draggingNode) {
-				this.draggingNode.x = (local.x - this.offsetX) / this.scale
-				this.draggingNode.y = (local.y - this.offsetY) / this.scale
-				this.draggingNode.vx = 0
-				this.draggingNode.vy = 0
-				this.render()
-			} else if (this.isPanning) {
-				const dx = local.x - this.lastPanX
-				const dy = local.y - this.lastPanY
-				this.offsetX += dx
-				this.offsetY += dy
-				this.lastPanX = local.x
-				this.lastPanY = local.y
-				this.render()
-			}
-		},
-
-		onTouchEnd(e) {
-			const touch = e.changedTouches[0]
-			const local = this.getCanvasLocalXY(touch)
-			const dx = Math.abs(local.x - this.touchStartX)
-			const dy = Math.abs(local.y - this.touchStartY)
-
-			// 点击（非拖拽）：放宽阈值，避免轻微滑动被当成拖拽
-			if (dx < 12 && dy < 12) {
-				const hit = this.hitTestNode(local.x, local.y)
-				if (hit) {
-					this.selectedNode = hit
-					this.render()
-				} else {
-					if (this.selectedNode) {
-						this.selectedNode = null
-						this.render()
-					}
+		hitNode(x, y) {
+			const ox = this.canvasW / 2, oy = this.canvasH / 2
+			let best = null, bestDist = Number.POSITIVE_INFINITY
+			this.renderNodes.map(n => this.projectNode(n)).sort((a, b) => b.rz - a.rz).forEach(n => {
+				const d = Math.hypot(x - (n.rx + ox), y - (n.ry + oy))
+				if (d <= n.rr + 16 && d < bestDist) {
+					best = n
+					bestDist = d
 				}
-			}
-
-			this.draggingNode = null
+			})
+			return best
+		},
+		onTouchStart(e) {
+			const p = this.localPoint(e.touches[0])
+			this.touchStartX = p.x
+			this.touchStartY = p.y
+			this.lastX = p.x
+			this.lastY = p.y
 			this.isPanning = false
 		},
-
-		hitTestNode(x, y) {
-			const ox = this.offsetX
-			const oy = this.offsetY
-			const sc = this.scale
-			// 扩大可点击区域，方便小圆和手指点击
-			const hitPadding = 24
-			for (let i = this.simNodes.length - 1; i >= 0; i--) {
-				const n = this.simNodes[i]
-				const nx = n.x * sc + ox
-				const ny = n.y * sc + oy
-				const r = n.radius * sc + hitPadding
-				const dx = x - nx
-				const dy = y - ny
-				if (dx * dx + dy * dy <= r * r) {
-					return n
+		onTouchMove(e) {
+			const p = this.localPoint(e.touches[0])
+			const dx = p.x - this.touchStartX, dy = p.y - this.touchStartY
+			if (Math.abs(dx) > 8 || Math.abs(dy) > 8) this.isPanning = true
+			if (!this.isPanning) return
+			this.rotY += (p.x - this.lastX) * 0.008
+			this.rotX += (p.y - this.lastY) * 0.005
+			this.rotX = Math.max(-0.55, Math.min(0.55, this.rotX))
+			this.autoSpeed = Math.max(-0.018, Math.min(0.018, (p.x - this.lastX) * 0.0005))
+			this.lastX = p.x
+			this.lastY = p.y
+			this.drawGraph()
+		},
+		onTouchEnd(e) {
+			const p = this.localPoint((e.changedTouches && e.changedTouches[0]) || e.touches[0])
+			const dx = Math.abs(p.x - this.touchStartX), dy = Math.abs(p.y - this.touchStartY)
+			if (!this.isPanning && dx < 16 && dy < 16) {
+				const n = this.hitNode(p.x, p.y)
+				if (n) {
+					this.selectedNode = this.renderNodes.find(i => i.id === n.id) || n
+					this.autoSpeed = 0
+					this.drawGraph()
+				} else {
+					this.clearSelection()
 				}
+			} else if (!this.selectedNode && Math.abs(this.autoSpeed) < 0.006) {
+				this.autoSpeed = this.autoSpeed >= 0 ? 0.006 : -0.006
 			}
-			return null
+			this.isPanning = false
 		},
-
-		// ===== 功能操作 =====
-
-		toggleType(key) {
-			const idx = this.activeTypes.indexOf(key)
-			if (idx >= 0) {
-				if (this.activeTypes.length <= 1) return
-				this.activeTypes.splice(idx, 1)
-			} else {
-				this.activeTypes.push(key)
-			}
-			this.initSimulation()
+		clearSelection() {
+			this.selectedNode = null
+			this.autoSpeed = 0.012
+			this.drawGraph()
 		},
-
 		async onSearch() {
 			if (!this.searchKey.trim()) {
 				this.focusNodeId = null
 				await this.loadData()
 				return
 			}
-			this.loading = true
 			try {
 				const res = await searchNodes(this.searchKey.trim())
-				const results = res.data || res
-				if (results && results.length > 0) {
-					this.focusNodeId = results[0].id
+				const arr = res.data || res
+				if (arr && arr.length) {
+					this.focusNodeId = arr[0].id
 					await this.loadData()
+					this.selectedNode = this.renderNodes.find(n => n.id === this.focusNodeId) || null
+					this.autoSpeed = 0
+					this.drawGraph()
 				} else {
 					uni.showToast({ title: '未找到相关节点', icon: 'none' })
 				}
 			} catch (e) {
-				// 本地搜索 fallback
-				const found = this.simNodes.find(n =>
-					n.name.includes(this.searchKey.trim())
-				)
-				if (found) {
-					this.selectedNode = found
-					this.offsetX = this.canvasW / 2 - found.x * this.scale
-					this.offsetY = this.canvasH / 2 - found.y * this.scale
-					this.render()
-				} else {
-					uni.showToast({ title: '未找到相关节点', icon: 'none' })
-				}
+				uni.showToast({ title: '搜索失败', icon: 'none' })
 			}
-			this.loading = false
 		},
-
-		async focusNode(nodeId) {
+		toggleType(k) {
+			const idx = this.activeTypes.indexOf(k)
+			if (idx >= 0) {
+				if (this.activeTypes.length <= 1) return
+				this.activeTypes.splice(idx, 1)
+			} else {
+				this.activeTypes.push(k)
+			}
+			this.focusNodeId = null
 			this.selectedNode = null
-			this.focusNodeId = nodeId
-			this.offsetX = this.canvasW / 2
-			this.offsetY = this.canvasH / 2
+			this.loadData()
+		},
+		recenter(id) {
+			this.focusNode(id)
+		},
+		async focusNode(id) {
+			this.focusNodeId = id
+			this.selectedNode = null
 			await this.loadData()
+			this.selectedNode = this.renderNodes.find(n => n.id === id) || null
+			this.autoSpeed = 0
+			this.drawGraph()
 		},
-
-		getColor(type) {
-			return TYPE_COLORS[type] || '#999'
-		},
-
-		getTypeLabel(type) {
-			return TYPE_LABELS[type] || type
+		goDetail(node) {
+			const n = node || this.selectedNode
+			if (!n || n.id == null) return
+			const name = encodeURIComponent(n.name || '')
+			if (n.nodeType === 'PLAY') uni.navigateTo({ url: `/pages/play-detail/play-detail?nodeId=${n.id}&name=${name}` }).catch(() => {})
+			else if (n.nodeType === 'ACTOR') uni.navigateTo({ url: `/pages/actor-detail/actor-detail?nodeId=${n.id}&name=${name}` }).catch(() => {})
+			else if (n.nodeType === 'TERMINOLOGY') uni.navigateTo({ url: `/pages/terminology/terminology?nodeId=${n.id}&name=${name}` }).catch(() => {})
+			else uni.navigateTo({ url: `/pages/node-detail/node-detail?nodeId=${n.id}&name=${name}&nodeType=${n.nodeType || ''}` }).catch(() => {})
 		}
 	}
 }
 </script>
 
 <style scoped>
-.page {
-	position: relative;
-	width: 100vw;
-	height: 100vh;
-	background: #f5f5f5;
-	overflow: hidden;
-	display: flex;
-	flex-direction: column;
-}
-
-.toolbar {
-	padding: 16rpx 20rpx 12rpx;
-	background: #fff;
-	box-shadow: 0 2rpx 12rpx rgba(0,0,0,0.06);
-	z-index: 10;
-}
-.filter-row {
-	display: flex;
-	gap: 12rpx;
-	flex-wrap: wrap;
-	margin-bottom: 12rpx;
-}
-.filter-btn {
-	font-size: 22rpx;
-	padding: 6rpx 18rpx;
-	border-radius: 20rpx;
-	border: 2rpx solid #ccc;
-	transition: all 0.2s;
-}
-.filter-btn.active {
-	color: #fff;
-}
-.search-row {
-	display: flex;
-	gap: 12rpx;
-	align-items: center;
-}
-.search-input {
-	flex: 1;
-	height: 56rpx;
-	background: #f5f5f5;
-	border-radius: 28rpx;
-	padding: 0 24rpx;
-	font-size: 26rpx;
-}
-.search-btn {
-	width: 72rpx;
-	height: 56rpx;
-	line-height: 56rpx;
-	text-align: center;
-	background: #6366f1;
-	color: #fff;
-	border-radius: 28rpx;
-	font-size: 26rpx;
-}
-
-.graph-canvas {
-	flex: 1;
-	background: #f5f5f5;
-}
-
-.legend {
-	position: absolute;
-	bottom: 24rpx;
-	left: 20rpx;
-	display: flex;
-	gap: 16rpx;
-	background: rgba(255,255,255,0.92);
-	padding: 10rpx 20rpx;
-	border-radius: 16rpx;
-	box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.1);
-	z-index: 5;
-}
-.legend-item {
-	display: flex;
-	align-items: center;
-	gap: 6rpx;
-}
-.legend-dot {
-	width: 16rpx;
-	height: 16rpx;
-	border-radius: 50%;
-}
-.legend-text {
-	font-size: 20rpx;
-	color: #666;
-}
-
-/* 详情弹窗 */
-.detail-mask {
-	position: fixed;
-	top: 0; left: 0; right: 0; bottom: 0;
-	background: rgba(0,0,0,0.35);
-	display: flex;
-	align-items: flex-end;
-	justify-content: center;
-	z-index: 100;
-}
-.detail-card {
-	width: 92%;
-	background: #fff;
-	border-radius: 28rpx 28rpx 0 0;
-	padding: 40rpx 36rpx 60rpx;
-}
-.detail-header {
-	display: flex;
-	align-items: center;
-	gap: 16rpx;
-	margin-bottom: 20rpx;
-}
-.detail-dot {
-	width: 24rpx;
-	height: 24rpx;
-	border-radius: 50%;
-}
-.detail-name {
-	font-size: 36rpx;
-	font-weight: bold;
-	color: #333;
-}
-.detail-type {
-	font-size: 24rpx;
-	color: #999;
-	margin-left: auto;
-}
-.detail-desc {
-	font-size: 28rpx;
-	color: #666;
-	line-height: 1.6;
-	display: block;
-	margin-bottom: 16rpx;
-}
-.detail-links {
-	margin-bottom: 24rpx;
-}
-.detail-link-count {
-	font-size: 26rpx;
-	color: #6366f1;
-}
-.detail-actions {
-	display: flex;
-	gap: 20rpx;
-}
-.detail-btn {
-	flex: 1;
-	text-align: center;
-	padding: 20rpx;
-	border-radius: 16rpx;
-	font-size: 28rpx;
-	background: #6366f1;
-	color: #fff;
-}
-.detail-btn.primary {
-	background: #6366f1;
-	color: #fff;
-}
-.detail-btn.secondary {
-	background: #f0f0f0;
-	color: #666;
-}
-.detail-rec { margin: 20rpx 0; padding-top: 20rpx; border-top: 1rpx solid #eee; }
-.detail-rec-title { font-size: 26rpx; color: #6366f1; display: block; margin-bottom: 12rpx; }
-.detail-rec-list { display: flex; flex-direction: column; gap: 10rpx; max-height: 260rpx; overflow-y: auto; }
-.detail-rec-item { display: flex; align-items: center; padding: 16rpx; background: #f8f8f8; border-radius: 12rpx; }
-.detail-rec-item:active { background: #eee; }
-.detail-rec-text { flex: 1; min-width: 0; }
-.detail-rec-name { font-size: 26rpx; font-weight: 500; color: #333; display: block; }
-.detail-rec-reason { font-size: 22rpx; color: #888; display: block; margin-top: 4rpx; }
-.detail-rec-go { font-size: 32rpx; color: #999; margin-left: 12rpx; flex-shrink: 0; }
-
-/* 加载遮罩 */
-.loading-mask {
-	position: absolute;
-	top: 0; left: 0; right: 0; bottom: 0;
-	background: rgba(255,255,255,0.8);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 50;
-}
-.loading-text {
-	font-size: 30rpx;
-	color: #666;
-}
+.page{position:relative;width:100vw;height:100vh;background:radial-gradient(circle at 78% 16%,rgba(242,201,76,.16),transparent 26%),radial-gradient(circle at 8% 10%,rgba(186,61,78,.18),transparent 28%),linear-gradient(180deg,#0f0609 0%,#17080d 34%,#12060a 100%);overflow:hidden;display:flex;flex-direction:column}
+.toolbar-shell{padding:18rpx 18rpx 10rpx;position:relative;z-index:10}
+.toolbar{padding:20rpx 20rpx 18rpx;background:rgba(31,11,18,.78);border:1rpx solid rgba(255,244,229,.1);box-shadow:0 18rpx 36rpx rgba(0,0,0,.28);border-radius:26rpx;backdrop-filter:blur(18rpx)}
+.toolbar-top{display:flex;justify-content:space-between;align-items:flex-start;gap:18rpx;margin-bottom:18rpx}
+.toolbar-title-wrap{flex:1}
+.toolbar-kicker{display:block;font-size:18rpx;letter-spacing:3rpx;color:rgba(242,201,76,.84);margin-bottom:8rpx}
+.toolbar-title{display:block;font-size:34rpx;font-weight:700;color:#fff4e8}
+.toolbar-badge{padding:10rpx 18rpx;border-radius:999rpx;background:rgba(255,255,255,.06);border:1rpx solid rgba(255,255,255,.08);font-size:22rpx;color:rgba(255,240,228,.82)}
+.filter-row{display:flex;gap:12rpx;flex-wrap:wrap;margin-bottom:14rpx}
+.filter-btn{font-size:22rpx;padding:8rpx 18rpx;border-radius:999rpx;border:2rpx solid rgba(255,255,255,.12)}
+.search-row{display:flex;gap:12rpx;align-items:center}
+.search-input{flex:1;height:60rpx;background:rgba(255,255,255,.06);border:1rpx solid rgba(255,255,255,.08);border-radius:30rpx;padding:0 24rpx;font-size:26rpx;color:#fff3ea}
+.search-btn{min-width:110rpx;height:60rpx;line-height:60rpx;text-align:center;background:linear-gradient(135deg,#f2c94c,#c17f39);color:#43111a;border-radius:30rpx;font-size:26rpx;font-weight:700;box-shadow:0 10rpx 22rpx rgba(193,127,57,.24)}
+.tap-guide{position:relative;z-index:8;margin:0 18rpx 8rpx;padding:12rpx 18rpx;border-radius:16rpx;background:rgba(242,201,76,.14);border:1rpx solid rgba(242,201,76,.22);font-size:22rpx;color:#fbe7b4}
+.graph-canvas{flex:1;background:transparent}
+.legend-shell{position:absolute;left:18rpx;bottom:24rpx;z-index:5}
+.tap-hint{margin-bottom:12rpx;padding:12rpx 16rpx;background:rgba(19,7,11,.78);border:1rpx solid rgba(255,255,255,.08);border-radius:14rpx;font-size:22rpx;color:rgba(255,240,228,.82);backdrop-filter:blur(12rpx)}
+.legend{display:flex;gap:16rpx;flex-wrap:wrap;max-width:86vw;background:rgba(19,7,11,.72);padding:12rpx 18rpx;border-radius:18rpx;border:1rpx solid rgba(255,255,255,.08);backdrop-filter:blur(14rpx)}
+.legend-item{display:flex;align-items:center;gap:8rpx}.legend-dot{width:16rpx;height:16rpx;border-radius:50%}.legend-text{font-size:20rpx;color:rgba(255,240,228,.8)}
+.detail-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:100}
+.detail-card{width:92%;background:linear-gradient(180deg,rgba(255,248,241,.98),rgba(255,238,224,.96));border-radius:30rpx 30rpx 0 0;padding:40rpx 36rpx 60rpx;box-shadow:0 -12rpx 40rpx rgba(0,0,0,.18)}
+.detail-head{display:flex;align-items:center;gap:16rpx;margin-bottom:20rpx}.detail-dot{width:24rpx;height:24rpx;border-radius:50%}.detail-name{font-size:36rpx;font-weight:700;color:#45131a}.detail-type{font-size:24rpx;color:#9a6d50;margin-left:auto}.detail-desc{font-size:28rpx;color:#6d4d4f;line-height:1.7;display:block;margin-bottom:16rpx}.detail-links{font-size:26rpx;color:#8f2433;font-weight:600;display:block;margin-bottom:24rpx}.detail-actions{display:flex;gap:20rpx}.detail-btn{flex:1;text-align:center;padding:20rpx;border-radius:18rpx;font-size:28rpx;background:linear-gradient(135deg,#6e1826,#9f3044);color:#fff7eb}.detail-btn.primary{background:linear-gradient(135deg,#4d1220,#7f2231)}.detail-btn.secondary{background:rgba(127,34,49,.08);color:#7f2231;border:1rpx solid rgba(127,34,49,.14)}
+.mask{position:absolute;inset:0;background:rgba(10,3,5,.52);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20rpx;z-index:50}.ring{width:68rpx;height:68rpx;border-radius:50%;border:6rpx solid rgba(255,255,255,.14);border-top-color:#f2c94c;animation:spin .9s linear infinite}.mask-text{font-size:30rpx;color:rgba(255,240,228,.9)}
+@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 </style>

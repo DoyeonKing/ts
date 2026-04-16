@@ -57,6 +57,37 @@
 
 <script>
 import { getRecommendationsForActor } from '../../api/recommendation.js'
+
+const ACTOR_DETAIL_MAP = {
+	'濮存昕': { id: 7, name: '濮存昕', intro: '著名话剧演员，北京人艺。', awards: ['梅花奖', '文华奖'], specialty: '话剧、莎士比亚', worksList: [{ id: 1, name: '《哈姆雷特》', role: '哈姆雷特' }, { id: 2, name: '《李尔王》', role: '李尔王' }, { id: 6, name: '《茶馆》', role: '常四爷' }], schedules: [{ showName: '《哈姆雷特》', date: '2026-04-11 19:30', venue: '国家大剧院' }] },
+	'袁泉': { id: 8, name: '袁泉', intro: '演员，话剧与影视。', awards: ['梅花奖', '金狮奖'], specialty: '话剧、音乐剧', worksList: [{ id: 1, name: '《哈姆雷特》', role: '奥菲利亚' }], schedules: [] },
+	'何冰': { id: 9, name: '何冰', intro: '北京人艺演员。', awards: ['梅花奖'], specialty: '话剧、喜剧', worksList: [{ id: 2, name: '《李尔王》', role: '葛罗斯特' }, { id: 6, name: '《茶馆》', role: '松二爷' }], schedules: [{ showName: '《茶馆》', date: '2026-04-13 19:30', venue: '北京人民艺术剧院' }] }
+}
+
+function normalizeName(name) {
+	return decodeURIComponent(name || '').replace(/[《》]/g, '').trim()
+}
+
+function buildActorDetail(opts = {}) {
+	const rawId = opts.nodeId || opts.id || ''
+	const numericId = Number(rawId)
+	const byName = ACTOR_DETAIL_MAP[normalizeName(opts.name)]
+	if (byName) {
+		return { ...byName, id: Number.isFinite(numericId) && numericId > 0 ? numericId : byName.id }
+	}
+	const byId = Object.values(ACTOR_DETAIL_MAP).find(item => item.id === numericId)
+	if (byId) return { ...byId }
+	return {
+		id: Number.isFinite(numericId) && numericId > 0 ? numericId : rawId,
+		name: opts.name ? normalizeName(opts.name) : '演员',
+		intro: '',
+		awards: [],
+		specialty: '',
+		worksList: [],
+		schedules: []
+	}
+}
+
 export default {
 	data() {
 		return {
@@ -65,13 +96,7 @@ export default {
 		}
 	},
 	onLoad(opts) {
-		const id = opts.id || '1'
-		const map = {
-			'1': { id: 1, name: '濮存昕', intro: '著名话剧演员，北京人艺。', awards: ['梅花奖', '文华奖'], specialty: '话剧、莎士比亚', worksList: [{ id: 1, name: '《哈姆雷特》', role: '哈姆雷特' }, { id: 2, name: '《李尔王》', role: '李尔王' }, { id: 3, name: '《茶馆》', role: '常四爷' }], schedules: [{ showName: '《哈姆雷特》', date: '2024-03-01 19:30', venue: '国家大剧院' }] },
-			'2': { id: 2, name: '袁泉', intro: '演员，话剧与影视。', awards: ['梅花奖', '金狮奖'], specialty: '话剧、音乐剧', worksList: [{ id: 4, name: '《简·爱》', role: '简·爱' }, { id: 5, name: '《青蛇》', role: '白蛇' }], schedules: [] },
-			'3': { id: 3, name: '何冰', intro: '北京人艺演员。', awards: ['梅花奖'], specialty: '话剧、喜剧', worksList: [{ id: 6, name: '《窝头会馆》', role: '苑国钟' }], schedules: [{ showName: '《喜剧的忧伤》', date: '2024-03-10 19:30', venue: '北京人艺' }] }
-		}
-		this.actor = map[id] || { id, name: '演员', intro: '', awards: [], specialty: '', worksList: [], schedules: [] }
+		this.actor = buildActorDetail(opts)
 		this.loadRecommendations(this.actor.id)
 	},
 	methods: {
@@ -89,10 +114,10 @@ export default {
 			}
 		},
 		goPlay(id) {
-			uni.navigateTo({ url: `/pages/play-detail/play-detail?id=${id}` }).catch(() => {})
+			uni.navigateTo({ url: `/pages/play-detail/play-detail?nodeId=${id}` }).catch(() => {})
 		},
 		goActor(id) {
-			uni.navigateTo({ url: `/pages/actor-detail/actor-detail?id=${id}` }).catch(() => {})
+			uni.navigateTo({ url: `/pages/actor-detail/actor-detail?nodeId=${id}` }).catch(() => {})
 		}
 	}
 }

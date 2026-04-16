@@ -29,8 +29,11 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/ai/**").permitAll()
+                        .requestMatchers("/api/advanced-recommendation/**").permitAll()
                         .requestMatchers("/api/knowledge-graph/**").permitAll()
                         .requestMatchers("/api/recommendations/**").permitAll()
+                        .requestMatchers("/api/performances/**").permitAll()
                         .requestMatchers("/api/play-rating/**").permitAll()
                         .requestMatchers("/api/comment/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()

@@ -94,10 +94,13 @@ export default {
 				uni.showToast({ title: '请先选择座位', icon: 'none' })
 				return
 			}
-			const seats = this.selectedSeats.join(',')
+			const seats = this.selectedSeats.join('、')
 			const amount = this.selectedSeats.length * PRICE_PER_SEAT
-			uni.navigateTo({
-				url: `/pages/payment/payment?performanceId=${this.performanceId}&scheduleId=${this.scheduleId}&seats=${encodeURIComponent(seats)}&amount=${amount}&performanceName=${encodeURIComponent(this.performanceName)}&dateTime=${encodeURIComponent(this.dateTime)}`
+			uni.showModal({
+				title: '选座完成',
+				content: `已选座位：${seats}\n合计：¥${amount}\n\n本平台不提供在线支付，请至线下票房或官方渠道购票。`,
+				showCancel: false,
+				confirmText: '知道了'
 			})
 		}
 	}

@@ -1,0 +1,4 @@
+# 把你准备采集的公开页面 URL 一行一个写在这里
+# 建议优先放剧院官网、公开演出详情页、公众号文章页
+
+https://detail.damai.cn/item.htm?spm=a2oeg.search_category.0.0.26564d15DdVj9M&id=1040925668733&clicktitle=%E5%BC%80%E5%BF%83%E9%BA%BB%E8%8A%B1%E5%B9%B4%E5%BA%A6%E6%9C%80%E7%96%AF%E6%82%AC%E7%96%91%E5%96%9C%E5%89%A7%E3%80%8A%E8%B0%81%E6%9D%80%E4%BA%86%E7%BD%97%E4%BC%AF%E7%89%B9%E3%80%8B%E6%B2%89%E6%B5%B8%E7%89%88

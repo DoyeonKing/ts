@@ -1,0 +1,54 @@
+# Server configuration
+server:
+  port: 8080
+  address: 0.0.0.0
+
+# Spring Data Source (MySQL)
+spring:
+  # 密钥只放在 springboot/config/application-local.yml（勿写进本仓库）。
+  # classpath 模板不含 api-key；file 在后方导入，避免空 api-key 覆盖密钥。
+  config:
+    import:
+      - optional:file:E:/ts/springboot/config/application-local.yml
+      - optional:file:./config/application-local.yml
+      - optional:file:./springboot/config/application-local.yml
+  datasource:
+    # Navicat「ts」连接中的数据库名 ts；本机 MySQL 默认端口 3306
+    url: jdbc:mysql://localhost:3306/ts?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf-8&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      minimum-idle: 5
+      maximum-pool-size: 20
+      auto-commit: true
+      idle-timeout: 180000
+      max-lifetime: 1200000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+# OpenAPI (Swagger UI) configuration
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+# 成员 B：大模型配置不要写在本文件（否则会覆盖 application-local.yml）。
+# 请在 springboot/config/application-local.yml 配置，或仅用环境变量：AI_API_KEY、AI_BASE_URL、AI_MODEL
+# （AiLlmProperties 在 Java 里已有默认空值，未配置时走演示文案。）
+
+# Logging configuration
+logging:
+  level:
+    org.springframework: INFO
+    com.example: DEBUG
+
